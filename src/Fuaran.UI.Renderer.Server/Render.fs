@@ -363,7 +363,11 @@ and private renderKind
             Emit.plan (
                 ElementPlan.DerivationPlan.around
                     (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Value)
-                    (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+                    (ElementPlan.RefreshPlan.aroundMetric
+                        // Phase 2751 — the refresh marks, inside the derivation
+                        // host (`Off`: the metric's plan, untouched).
+                        (ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Value)
+                        (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec))
             )
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)

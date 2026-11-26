@@ -7813,20 +7813,20 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field) (DRAFT — untagged)
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class (DRAFT — untagged)
 
 **Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
 additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
 0.108.0 is already one minor ahead of the last tag, so the number does not move.
 
-- **What breaks.** `RenderPolicy` gains the field `DerivationTrace`, so code that builds a `RenderPolicy` as a full
-  record literal stops compiling (`FS0764`).
+- **What breaks.** `RenderPolicy` gains the fields `DerivationTrace` (Phase 2749) and `RefreshMarking`
+  (Phase 2751), so code that builds a `RenderPolicy` as a full record literal stops compiling (`FS0764`).
 - **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles and
-  behaves as before. The new field is `Off` by default, and with it off every render is byte-identical.
+  behaves as before. Both new fields are `Off` by default, and with them off every render is byte-identical.
 - **Phase 2753's own change is additive.** It adds one certified fragment and its types to `Fuaran.UI.Fragments`,
   and no existing member moves.
 
-The two entries follow.
+The three entries follow.
 
 ### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
 
@@ -7903,6 +7903,52 @@ posture.
 reference evaluation byte for byte. It shows that through the resolver the last table is the slot's resolved rows
 or cell, that an open schema carries the walk's reason, that the tool's answers and refusals are correct, and that
 with the policy off a tree renders byte-identically.
+
+### Phase 2751 — the row delta of a live refresh reaches the renderer (breaking, for `RenderPolicy`)
+
+**Class: breaking, for one record.** `RenderPolicy` gains the field `RefreshMarking`, so code that builds a
+`RenderPolicy` as a full record literal stops compiling (`FS0764`), as with Phase 2749's field. Anything that starts
+from `RenderPolicy.defaults` is unaffected. Every other change below is additive. Packages
+`Fuaran.UI.Renderer.Core`, `Fuaran.UI.Renderer`, `Fuaran.UI.Renderer.Server` and `Fuaran.UI.ServerDriven`. No kind,
+variant or wire member is added, and no byte of a fixture moves: the marks are host chrome under a render policy that
+is off by default, and the corpus's edit streams are read, never written.
+
+- **`BindingResolver.RefreshMarks`** (`Fuaran.UI.Renderer.Core`), a new record: what one live refresh changed, read
+  against the table it produced. `Rows` holds the produced table's row positions that the delta names as added or
+  changed, located by the identity column's key. `Columns` holds the columns the delta invalidates without naming
+  rows. `Added`, `Changed` and `Removed` count the named source rows. `RefreshMarks.ofRefresh` builds it, and
+  returns `None` unless the incremental seam restricted the refresh (`RowsRecomputed`, `GroupsRecomputed`) against
+  a row-set delta. A declined refresh (`FullRecompute`), a reference-path one, a prime and a reuse carry none.
+  Nothing diffs to make up for it. `RefreshMarks.describe` words the counts for the live region.
+- **`BindingResolver.RefreshMarksStore`**, a new abstract class with one member, `LastRefresh site`. A session store
+  derives from it to report its marks. It is a class rather than a second interface so that the resolver's type test
+  survives Fable. `Fuaran.UI.ILiveTransformStore` is unchanged, and a store that does not derive marks nothing.
+- **`BindingResolver.refreshMarks sources binding`** returns the marks of the refresh that produced a `Transform`
+  binding's value. It asks about the same site the slot's own evaluation asked about.
+- **`LiveTransformStore`** (`Fuaran.UI.ServerDriven`) now derives from `RefreshMarksStore`, and every evaluation
+  records its refresh's marks beside the primed states, under the same bound. Reading them counts no hit. A reuse of
+  the same source object keeps the marks of the refresh that produced it. Its members and their behaviour are
+  otherwise unchanged.
+- **`RenderPolicy.RefreshMarking`**, a field of the new `RefreshMarkingPolicy` (`Off` | `Mark`). `RenderPolicy.defaults`
+  is `Off`. With it on, a reporting site renders inside a `fuaran-refresh-host` element whose polite live region
+  (`fuaran-refresh-status`, `role="status"`) says what the refresh changed. Both renderers mark a `Metric` whose
+  refresh recomputed its one-cell value (`fuaran-refresh-moved`, "Value updated"). The client marks each data-bound
+  `DataGrid` cell the delta names (`fuaran-refresh-changed`); the grid's server render stays its hydration
+  placeholder. The plan is `ElementPlan.RefreshPlan`, so the two tiers emit the same markup. The reference
+  stylesheet outlines a mark, fades its tint once, and stops the fade under `prefers-reduced-motion`. The four tier
+  copies are regenerated, and the vocabulary fingerprint moves.
+
+**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal. **Migration:**
+start from `RenderPolicy.defaults`. A host that wants the marks sets `RefreshMarking = RefreshMarkingPolicy.Mark`,
+on the client in its context's `Policy` and on the server through `renderWithPolicy`, and furnishes a
+`LiveTransformStore` that declares its identity column (`LiveTransformOptions.identifiedBy`). A store with no
+identity declared refreshes through the reference path and marks nothing.
+
+**Certified by** `src/Fuaran.UI.ServerDriven.Tests/RefreshMarksTests.fs`. Over every edit stream in the
+incremental-recompute corpus, the cells marked are exactly the cells the refresh's delta names. A declined refresh and
+a reference-path one mark nothing, and an edit recorded as a column op marks the row it edited. With the policy off
+the server render is byte-identical to the ordinary one. The live region says what changed, and the reduced-motion
+rule stops the animation.
 
 ---
 

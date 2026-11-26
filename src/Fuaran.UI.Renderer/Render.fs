@@ -2843,7 +2843,11 @@ let rec private renderKind
             Emit.plan (
                 ElementPlan.DerivationPlan.around
                     (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Value)
-                    (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec)
+                    (ElementPlan.RefreshPlan.aroundMetric
+                        // Phase 2751 — the refresh marks, inside the derivation
+                        // host (`Off`: the metric's plan, untouched).
+                        (ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Value)
+                        (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec))
             )
     | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
     | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
@@ -3092,7 +3096,15 @@ let rec private renderKind
 
             Emit.planWith attach (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
         | None ->
-            let grid = renderGrid ctx parentNodeId state spec
+            // Phase 2751 — a reporting live site's grid sits in the refresh host
+            // beside its live region (`Off`, or a site that does not report:
+            // the grid element itself). Read after `renderGrid` resolved the rows.
+            let grid =
+                let rendered = renderGrid ctx parentNodeId state spec
+
+                match ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Source with
+                | None -> rendered
+                | site -> Emit.plan (ElementPlan.RefreshPlan.aroundGrid site (ElementPlan.Plan.Host rendered))
 
             // Phase 2749 — a grid bound through a pipeline offers its derivation
             // once, beside the table: every cell of it shares the one pipeline.
@@ -4424,11 +4436,22 @@ and private renderGrid
             let sortDescriptor =
                 BindingResolver.effectiveSortDescriptor spec.SortStateKey spec.DefaultSort ctx.Sources
 
+            let resolvedRows =
+                match resolution with
+                | BindingResolver.Resolved seq -> Seq.toList seq
+                | _ -> []
+
             let rows =
-                (match resolution with
-                 | BindingResolver.Resolved seq -> Seq.toList seq
-                 | _ -> [])
-                |> GridModel.sortRowsByDescriptor spec.Columns sortDescriptor
+                resolvedRows |> GridModel.sortRowsByDescriptor spec.Columns sortDescriptor
+
+            // Phase 2751 — the cells this refresh's delta names, matched against
+            // the rows in the order the refresh produced them (before the sort
+            // and the page). `Off`, or no marks: no cell is marked.
+            let refreshMarked =
+                ElementPlan.RefreshPlan.cellMarker
+                    (ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Source
+                     |> Option.flatten)
+                    resolvedRows
 
             // Phase 862 — `pageStateKey` + `pageSize`: the grid shows one page
             // at a time and owns the pager that moves between them. `hostPages`
@@ -5187,6 +5210,14 @@ and private renderGrid
                                                           Html.td
                                                               [ prop.key (columnKey columnIndex col)
                                                                 prop.className "fuaran-grid-cell"
+                                                                // Phase 2751 — a cell the refresh delta names. The later
+                                                                // `className` replaces the one above, whose literal stays
+                                                                // where the reconciliation-key scan anchors on it.
+                                                                if refreshMarked row col.Field then
+                                                                    prop.className (
+                                                                        "fuaran-grid-cell "
+                                                                        + ElementPlan.RefreshPlan.ChangedCellClass
+                                                                    )
                                                                 prop.children
                                                                     [ renderGridCell ctx commit paste col row ] ] ]
 

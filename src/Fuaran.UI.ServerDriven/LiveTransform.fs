@@ -437,9 +437,24 @@ type internal LiveSiteState =
 /// has an identity, and every evaluation runs through the seam's reference path
 /// and answers correctly while restricting nothing. A host that wants the
 /// saving names its key column; a host that names none loses only the saving.
+///
+/// Phase 2751 — it is also a `RefreshMarksStore`: each evaluation records the
+/// marks of its refresh (`RefreshMarks.ofRefresh` over the delta the refresh was
+/// computed against and the table it produced), which the renderer reads under
+/// `RenderPolicy.RefreshMarking`. Only a refresh the seam restricted records
+/// any; a prime, a reuse, a decline, a reference-path refresh and a refused
+/// evaluation record none.
 type LiveTransformStore(capacity: int, identityColumn: string) =
+    inherit Fuaran.UI.Renderer.BindingResolver.RefreshMarksStore()
     let states = BoundedLru<LiveSiteState>(capacity)
     let mutable recent: EditStep list = []
+
+    // Phase 2751 — the marks of each site's last evaluation, beside the primed
+    // states under the same bound rather than inside them: reading them must
+    // not count as a hit on the states, whose counters say whether site keys
+    // are stable.
+    let marks =
+        BoundedLru<Fuaran.UI.Renderer.BindingResolver.RefreshMarks option>(capacity)
 
     /// A store at an explicit bound with no declared row identity — correct on
     /// every site, restricting on none. Preserved at its original arity: the
@@ -471,6 +486,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
     /// site re-primes over its current source.
     member _.Clear() =
         states.Clear()
+        marks.Clear()
         recent <- []
 
     /// Phase 1891 — record an applied edit so that the next evaluation of every
@@ -521,10 +537,33 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
                   Version = version }
             )
 
+            // Phase 2751 — the refresh's own delta, read against what it
+            // produced. A prime has no delta; `SameSource` and the reference
+            // path hand the seam none narrower than the top.
+            marks.Set(
+                site,
+                match delta with
+                | OpDerived(_, d)
+                | Diffed d when not primed ->
+                    Fuaran.UI.Renderer.BindingResolver.RefreshMarks.ofRefresh
+                        identityColumn
+                        d
+                        (Incremental.footprint state).Recompute
+                        (Incremental.result state)
+                | _ -> None
+            )
+
             { Result = Incremental.result state
               Footprint = Incremental.footprint state
               Primed = primed
               Delta = delta }
+
+        // Phase 2751 — a refused evaluation leaves no marks behind: the slot
+        // shows the refusal, and an earlier refresh's marks describe a table
+        // it no longer shows.
+        let refused (e: EvalError) : string =
+            marks.Set(site, None)
+            DataFrame.errorString e
 
         // The recorded step whose `After` IS the table handed in — matched by
         // reference, newest first, so the common case (one edit since the last
@@ -591,7 +630,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
                     Incremental.primeOn idw pipeline source
                     |> Result.map (toEvaluation true NoPrior None)
 
-            primed |> Result.mapError DataFrame.errorString
+            primed |> Result.mapError refused
         | Some prior ->
             // Phase 1761 — a source equal to the one the state holds is
             // truthfully described by the quiet delta under ANY identity scheme,
@@ -620,7 +659,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
 
                 Incremental.refreshOnPrepared idw pipeline prior.Eval delta last.After
                 |> Result.map (toEvaluation false (OpDerived(List.length steps, delta)) (Some last.After))
-                |> Result.mapError DataFrame.errorString
+                |> Result.mapError refused
             | None ->
                 let unchanged = obj.ReferenceEquals(prior.Source, source) || prior.Source = source
 
@@ -641,7 +680,7 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
 
                 Incremental.refreshOn idw pipeline prior.Eval delta source
                 |> Result.map (toEvaluation false account None)
-                |> Result.mapError DataFrame.errorString
+                |> Result.mapError refused
 
     // Phase 1586 — the renderer's seam, served by the same method above under
     // the store's own identity declaration. ONE key rule, not two: the `site`
@@ -658,6 +697,12 @@ type LiveTransformStore(capacity: int, identityColumn: string) =
     interface Fuaran.UI.ILiveTransformStore with
         member this.Evaluate(site: string, pipeline: Transform list, source: Table) =
             this.Evaluate(site, identityColumn, pipeline, source) |> Result.map _.Result
+
+    /// The marks of `site`'s last evaluation (Phase 2751) — `None` when it
+    /// primed, declined, ran through the reference path or was refused, and for
+    /// a site this store has not evaluated or has since evicted. A reuse of the
+    /// same source object keeps the marks of the refresh that produced it.
+    override _.LastRefresh(site: string) = marks.TryGet site |> Option.flatten
 
 /// What a HOST declares, once, about the live-Transform store one of its
 /// sessions will hold (Phase 1604).

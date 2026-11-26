@@ -973,6 +973,95 @@ module DerivationPlan =
         | None -> inner
         | Some disclosure -> Plan.classChildren "div" "fuaran-derivation-host" [ inner; disclosure ]
 
+/// Phase 2751 — the marks of a live refresh: what the refresh's row delta named,
+/// for that one refresh, under `RenderPolicy.RefreshMarking`. Host chrome
+/// planned once for both renderers, as the derivation affordance is.
+///
+/// A reporting site renders inside a host element carrying a polite live region
+/// (`role="status"`) whether or not this refresh marked anything, so the region
+/// exists before its text changes, which is when assistive technology reads
+/// it. The mark is never colour alone: the stylesheet outlines a marked cell
+/// and value, and the region says what changed in words.
+[<RequireQualifiedAccess>]
+module RefreshPlan =
+
+    /// The marks `binding`'s site reports under `policy`: the outer `None` when
+    /// the policy is `Off` or the binding reads no reporting site (see
+    /// `BindingResolver.refreshMarks`).
+    let forBinding
+        (policy: RenderPolicy)
+        (sources: BindingResolver.BindingSources)
+        (binding: Binding<'T>)
+        : BindingResolver.RefreshMarks option option =
+        match policy.RefreshMarking with
+        | RefreshMarkingPolicy.Off -> None
+        | RefreshMarkingPolicy.Mark -> BindingResolver.refreshMarks sources binding
+
+    /// The live region: always present on a reporting site, empty when the
+    /// refresh marked nothing.
+    let private status (text: string) : Plan<'E> =
+        Plan.element
+            "span"
+            (Plan.attrs [ "class", "fuaran-refresh-status"; "role", "status"; "aria-live", "polite" ])
+            (if text = "" then Content.Empty else Content.Text text)
+
+    /// Whether a scalar value moved: its one-cell result's row or column is
+    /// marked.
+    let moved (marks: BindingResolver.RefreshMarks option) : bool =
+        marks
+        |> Option.exists (fun m -> Set.contains 0 m.Rows || not (Set.isEmpty m.Columns))
+
+    /// A `Metric`'s plan inside the refresh host, or `inner` itself, untouched,
+    /// when the site does not report.
+    let aroundMetric (site: BindingResolver.RefreshMarks option option) (inner: Plan<'E>) : Plan<'E> =
+        match site with
+        | None -> inner
+        | Some marks ->
+            if moved marks then
+                Plan.classChildren "div" "fuaran-refresh-host fuaran-refresh-moved" [ inner; status "Value updated" ]
+            else
+                Plan.classChildren "div" "fuaran-refresh-host" [ inner; status "" ]
+
+    /// A grid's element inside the refresh host, with the region saying what
+    /// the delta named, or `inner` itself when the site does not report.
+    let aroundGrid (site: BindingResolver.RefreshMarks option option) (inner: Plan<'E>) : Plan<'E> =
+        match site with
+        | None -> inner
+        | Some marks ->
+            Plan.classChildren
+                "div"
+                "fuaran-refresh-host"
+                [ inner
+                  status (
+                      marks
+                      |> Option.map BindingResolver.RefreshMarks.describe
+                      |> Option.defaultValue ""
+                  ) ]
+
+    /// The class a marked grid cell adds to its own.
+    [<Literal>]
+    let ChangedCellClass = "fuaran-refresh-changed"
+
+    /// Whether a grid cell is marked: `row` is one of the RESOLVED rows (in the
+    /// order the refresh produced them, before any sort or page), matched by
+    /// reference, and `field` the cell's bound field. With no marks, nothing is.
+    let cellMarker (marks: BindingResolver.RefreshMarks option) (resolved: 'R list) : 'R -> string option -> bool =
+        match marks with
+        | None -> fun _ _ -> false
+        | Some m ->
+            let rows =
+                resolved
+                |> List.indexed
+                |> List.choose (fun (i, r) -> if Set.contains i m.Rows then Some(box r) else None)
+
+            fun row field ->
+                let r = box row
+
+                List.exists (fun marked -> obj.ReferenceEquals(marked, r)) rows
+                || (match field with
+                    | Some f -> Set.contains f m.Columns
+                    | None -> false)
+
 /// The behaviour attachment points the planned kinds declare. The client's
 /// resolver closures match on these names; a test pins which kind declares
 /// which, so a handler cannot be dropped silently.
