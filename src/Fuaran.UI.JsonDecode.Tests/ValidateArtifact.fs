@@ -193,6 +193,22 @@ let all: Vector list =
           "The root's envelope fallback and its own state.onEmpty alternative carry the same inline table (FUARAN107). The fallback comes first in document order, so the copy is the alternative, $.state.onEmpty."
           """{"fallback":{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}},"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"state":{"onEmpty":{"id":"g2","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}}}}"""
       v
+          "validate-filter-edge-in-the-fallback"
+          "A Metric held by the root's envelope fallback depends on the filter region, which no Filters chip declares (FUARAN075). Every node of the document is judged (section 8.1), the envelope included, so the finding is at the fallback, $.fallback."
+          """{"fallback":{"id":"q","kind":{"$type":"Metric","label":"Orders","value":{"$type":"Query","dependsOn":["region"],"name":"orders"}}},"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+      v
+          "validate-filter-edge-in-a-state-alternative"
+          "A Metric held by the root's state.onEmpty alternative depends on the filter region, which no Filters chip declares (FUARAN075): the finding is at the alternative, $.state.onEmpty."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"c","kind":{"$type":"Markdown","text":"t"}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"state":{"onEmpty":{"id":"q","kind":{"$type":"Metric","label":"Orders","value":{"$type":"Query","dependsOn":["region"],"name":"orders"}}}}}"""
+      v
+          "validate-filter-edge-in-a-nested-state-alternative"
+          "A Metric held by the state.onLoading alternative of a child's own state.onEmpty alternative depends on an undeclared filter (FUARAN075): the finding is at $.kind.children[0].state.onEmpty.state.onLoading."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"c0","kind":{"$type":"Markdown","text":"t"},"state":{"onEmpty":{"id":"e","kind":{"$type":"Markdown","text":"t"},"state":{"onLoading":{"id":"q","kind":{"$type":"Metric","label":"Orders","value":{"$type":"Query","dependsOn":["region"],"name":"orders"}}}}}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
+      v
+          "validate-filter-chip-in-a-state-alternative-grounds-an-edge"
+          "The Filters chip region is declared by a node in the root's state.onEmpty alternative, and a Metric in the root's kind depends on it. The declaration is part of the document, so the edge is grounded and there is no FUARAN075."
+          """{"id":"root","kind":{"$type":"Box","children":[{"id":"q","kind":{"$type":"Metric","label":"Orders","value":{"$type":"Query","dependsOn":["region"],"name":"orders"}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"},"state":{"onEmpty":{"id":"chips","kind":{"$type":"Filters","items":[{"kind":{"$type":"Choice","options":{"$type":"Static","value":[{"label":"EMEA","value":"emea"}]}},"label":"Region","name":"region"}]}}}}"""
+      v
           "validate-inline-table-repeated-three-times"
           "Three DataGrids carry the same inline table (FUARAN107): x, x, x is two findings, at the second and the third copy ($.kind.children[1], $.kind.children[2]), each naming the first copy; never one per pair."
           """{"id":"root","kind":{"$type":"Box","children":[{"id":"g1","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}},{"id":"g2","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}},{"id":"g3","kind":{"$type":"DataGrid","columns":[{"field":"a","kind":{"$type":"Text"},"label":"a"}],"rowKeyField":"a","source":{"$type":"Static","value":[{"a":1},{"a":2}]}}}],"layout":{"$type":"Flex","direction":"Vertical"},"role":"Group"}}"""
