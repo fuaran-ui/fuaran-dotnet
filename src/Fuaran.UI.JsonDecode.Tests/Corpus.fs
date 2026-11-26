@@ -1162,6 +1162,15 @@ let emit (outputDir: string) : unit =
     // `wholesaleDirectories`. `--emit-binding-propagation [<dir>]` writes only it.
     BindingPropagationArtifact.write outputDir |> ignore
 
+    // Co-emit the pre-emit VALIDATE family and the four host-tree APPLY
+    // families (Phase 2381): each vector's expectation is the reference
+    // validator's or apply path's own verdict. Both are self-enumerated
+    // directories outside `wholesaleDirectories`, so this rewrites only their
+    // files (never `apply/manifest.json`, which also carries Core's row).
+    // `--emit-validate [<dir>]` and `--emit-apply [<dir>]` write only them.
+    ValidateArtifact.write outputDir |> ignore
+    ApplyArtifact.write outputDir |> ignore
+
     // The canonical NodeKind enumeration is the set of true wire `kind.$type`
     // discriminators over the node round-trip fixtures — extracted from the
     // *encoded* bytes, NOT `Kind.name` (which is a display tag that diverges from

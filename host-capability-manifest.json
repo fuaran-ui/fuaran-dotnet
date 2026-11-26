@@ -88,7 +88,8 @@
     "stored-emissions": "covered",
     "style-observer": "covered",
     "teleport-decode": "covered",
-    "teleport-reject": "covered"
+    "teleport-reject": "covered",
+    "validate": "covered"
   },
   "tokens": []
 }

@@ -67,6 +67,11 @@
          precede Corpus.fs, which co-emits it. -->
     <Compile Include="FormattingArtifact.fs" />
     <Compile Include="BindingPropagationArtifact.fs" />
+    <!-- Phase 2381 — the validate family and the four host-tree apply families:
+         the declared inputs and the writers that take every expectation from the
+         reference validator and apply path. Must precede Corpus.fs, which co-emits them. -->
+    <Compile Include="ValidateArtifact.fs" />
+    <Compile Include="ApplyArtifact.fs" />
     <Compile Include="Corpus.fs" />
     <!-- Phase 699 — WIRE_FORMAT.md's mechanical tables as marker-block
          projections over idl.json (Phase 696) + manifest.json, with the
@@ -129,6 +134,8 @@
          stale-artefact guard and every committed vector read back. -->
     <Compile Include="FormattingTests.fs" />
     <Compile Include="BindingPropagationTests.fs" />
+    <!-- Phase 2381 — the stale-artefact guards and read-back of the validate and apply families. -->
+    <Compile Include="EmittedFamilyTests.fs" />
     <!-- Phase 101 — generative / property-based wire-format fuzzer:
          FsCheck generators (Generators.fs) + idempotence + DU-arm coverage
          properties (IdempotenceProperties.fs). -->

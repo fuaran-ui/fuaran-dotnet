@@ -162,6 +162,30 @@ let main argv =
 
         printfn "Emitted %s" (BindingPropagationArtifact.write dir)
         0
+    // Phase 2381 — write ONLY the validate family, or ONLY the four host-tree
+    // apply families, into a corpus directory:
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-validate [<dir>]
+    //   dotnet run --project src/Fuaran.UI.JsonDecode.Tests -- --emit-apply [<dir>]
+    // `--emit-corpus` co-emits both. Every expectation is the reference's own
+    // verdict, so neither can publish a claim the reference host does not meet.
+    | "--emit-validate" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        printfn "Emitted %s" (ValidateArtifact.write dir)
+        0
+    | "--emit-apply" :: rest ->
+        let dir =
+            match rest with
+            | d :: _ -> d
+            | [] -> Fuaran.Tests.CorpusRoot.find ()
+
+        for path in ApplyArtifact.write dir do
+            printfn "Emitted %s" path
+
+        0
     // Phase 101 cross-host fuzz-sample exchange. `--emit-fuzz-samples <dir>
     // <count>` writes F#-canonical generated samples; `--check-fuzz-samples
     // <dir> [host]` validates the <host>-canonical samples that host's emitter
