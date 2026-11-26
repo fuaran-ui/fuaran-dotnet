@@ -7813,6 +7813,14 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment), whose change is additive (DRAFT — untagged)
+
+**Class: additive.** `v0.107.0` is tagged, so nothing rides it: this change opens the next slot. Phase 2753 adds one
+certified fragment and its types to `Fuaran.UI.Fragments`, and no existing member moves. Its entry follows below
+when the phase lands.
+
+---
+
 ## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)
 
 **Class: additive, by dependency.** `v0.106.0` is tagged, so nothing rides it: this change opens the next slot.
