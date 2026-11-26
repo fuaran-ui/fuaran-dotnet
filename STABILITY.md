@@ -7816,8 +7816,37 @@ document that declares no ceiling is exactly the control it was.
 ## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment), whose change is additive (DRAFT — untagged)
 
 **Class: additive.** `v0.107.0` is tagged, so nothing rides it: this change opens the next slot. Phase 2753 adds one
-certified fragment and its types to `Fuaran.UI.Fragments`, and no existing member moves. Its entry follows below
-when the phase lands.
+certified fragment and its types to `Fuaran.UI.Fragments`, and no existing member moves. Its entry follows.
+
+### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
+
+**Class: additive.** Package `Fuaran.UI.Fragments`. One certified entry joins `Stdlib.all`. It is a composition of
+shipped kinds: no kind, variant or field is added, and no wire byte of an existing fixture moves.
+
+- **`refinable-table`** (`Stdlib.refinableTable`, `Stdlib.RefinableTableName`; effect `WritesHost`). It holds a heading,
+  a filter bar of `Tokens` chips (one per membership-filtered column) and a `DataGrid` over rows the host names. Holes:
+  `heading`, `source`, `key`, `page-size` and `count` (1 to 6). Each column *N* adds `column-N-field`, `-label`,
+  `-kind` (`text` or `number`), `-sort` (`sortable` or `fixed`), `-filter` (`none` or `membership`) and `-options`.
+  Each chip writes the filter key that the grid's pipeline reads as a list parameter (`InParam`). The sort and the
+  page stay the grid's own `sortStateKey` and `pageStateKey`.
+- **New members.** The types `RefinableKind`, `RefinableColumn`, `RefinableTable` and `RefinableView`. In `Stdlib`:
+  - `refinableTableOf` builds the table over a caller's rows. It refuses a row key, or a sortable or filterable
+    column, that the pipeline's static schema does not produce, and a membership filter over a column that is not
+    text.
+  - `refinablePipeline` returns the fixed pipeline.
+  - `refinedPipeline` returns the current view as one pipeline: every parameter substituted, and the sort and the
+    page written as literal steps.
+  - `refinableSortKey`, `refinablePageKey` and `refinableFilterKey` name the keys.
+
+  `StdlibFragment` is unchanged.
+- **Corpus.** Two node fixtures are new: `frag-stdlib-refinable-table` and `frag-stdlib-refinable-table-ref`. They use
+  no new wire vocabulary.
+
+**What a consumer must do.** Nothing. A consumer that pins the library's size now counts eleven; the suite's bound
+moves from ten to twelve (`docs/DECISIONS.md` D41).
+
+**Certified by** the `Phase 2753 — a refinable table whose view state is a pipeline` list in
+`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
 
 ---
 
@@ -7872,36 +7901,6 @@ errors make the omission a build error). A consumer that stored a `WRONG_NODE_KI
 `Text` now meets `MISSING_FIELD` at `…kind.text`, or a decoded node when the emission carried `text`. Nothing else
 moves. Admitted under the [vocabulary-growth charter](docs/VOCABULARY.md) (the running-text cluster records the
 gates). **No escape hatch is created or widened.**
-
-### Phase 2753 — a refinable table fragment whose view state is a pipeline (additive)
-
-**Class: additive.** Package `Fuaran.UI.Fragments`. One certified entry joins `Stdlib.all`. It is a composition of
-shipped kinds: no kind, variant or field is added, and no wire byte of an existing fixture moves.
-
-- **`refinable-table`** (`Stdlib.refinableTable`, `Stdlib.RefinableTableName`; effect `WritesHost`). It holds a heading,
-  a filter bar of `Tokens` chips (one per membership-filtered column) and a `DataGrid` over rows the host names. Holes:
-  `heading`, `source`, `key`, `page-size` and `count` (1 to 6). Each column *N* adds `column-N-field`, `-label`,
-  `-kind` (`text` or `number`), `-sort` (`sortable` or `fixed`), `-filter` (`none` or `membership`) and `-options`.
-  Each chip writes the filter key that the grid's pipeline reads as a list parameter (`InParam`). The sort and the
-  page stay the grid's own `sortStateKey` and `pageStateKey`.
-- **New members.** The types `RefinableKind`, `RefinableColumn`, `RefinableTable` and `RefinableView`. In `Stdlib`:
-  - `refinableTableOf` builds the table over a caller's rows. It refuses a row key, or a sortable or filterable
-    column, that the pipeline's static schema does not produce, and a membership filter over a column that is not
-    text.
-  - `refinablePipeline` returns the fixed pipeline.
-  - `refinedPipeline` returns the current view as one pipeline: every parameter substituted, and the sort and the
-    page written as literal steps.
-  - `refinableSortKey`, `refinablePageKey` and `refinableFilterKey` name the keys.
-
-  `StdlibFragment` is unchanged.
-- **Corpus.** Two node fixtures are new: `frag-stdlib-refinable-table` and `frag-stdlib-refinable-table-ref`. They use
-  no new wire vocabulary.
-
-**What a consumer must do.** Nothing. A consumer that pins the library's size now counts eleven; the suite's bound
-moves from ten to twelve (`docs/DECISIONS.md` D41).
-
-**Certified by** the `Phase 2753 — a refinable table whose view state is a pipeline` list in
-`src/Fuaran.UI.Fragments.Tests/StdlibCertificationTests.fs`, and by the library's quantified certification.
 
 ---
 
