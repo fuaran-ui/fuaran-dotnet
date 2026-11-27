@@ -99,19 +99,6 @@ module JsonBridge =
 
             target
 
-/// Registry for consumer-side custom renderers. Holds a
-/// dictionary keyed on `(moduleId, componentId)` whose values produce
-/// `ReactElement` from the typed-tree prop bag. The renderer's `Custom`
-/// arm consults `IFuaranRuntime.TryRenderCustom` first; this class is the
-/// canonical implementation hosts use to populate the runtime side.
-///
-/// Originally the `NodeKind.Custom` arm rendered only a labelled
-/// placeholder; consumers had no API to register a real renderer. Now
-/// any host (platform adapter, standalone browser-runtime consumer,
-/// the test runner) can construct a registry, register renderers
-/// keyed on `(moduleId, componentId)`, and pass it into the runtime
-/// constructor (`MutableRuntime` for tests, `BrowserRuntime` for the
-/// browser).
 /// One registered custom renderer, as a DESCRIPTION rather than as the thing
 /// itself (Phase 1743). The render function is a closure and is deliberately
 /// absent: this record exists so a host can REPORT which guest renderers it
@@ -133,6 +120,218 @@ type CustomRendererRegistration =
         HasContentHash: bool
     }
 
+// ─── DOM-mount Custom renderers (Phase 2513) ───────────────────────────────
+//
+// The second form a `Custom` renderer can take. The React form above hands the
+// renderer a `ReactElement`, so a third-party widget written against the plain
+// DOM had to be wrapped in a React component by the host before it could be
+// registered. A DOM mount needs no wrapper: the renderer gives it an element and
+// the node's props, and it hands back an update and a dispose.
+//
+// The contract names DOM and prop-bag types only, never a React or Feliz type,
+// so it does not change if the client renderer stops emitting React elements.
+// What adapts it to React is `DomMountHost` below, and that is the only part a
+// different emitter replaces.
+//
+// Not to be confused with `NodeKind.Mount` (Phase 265), which composes a GUEST
+// TREE under its own scope, nor with a hydration island (`Fuaran.asIsland`,
+// Phase 163), which marks a subtree the server emits statically and the client
+// hydrates. A DOM mount is a `Custom` node whose body is foreign DOM.
+
+/// What a started DOM mount hands back (Phase 2513). The renderer calls
+/// `Update` with the node's new props when they change, and `Dispose` once,
+/// when the node leaves the tree. Both run synchronously after the renderer's
+/// DOM commit.
+type CustomDomHandle =
+    {
+        /// Deliver changed props. Not called for a re-render whose props are
+        /// equal to the last ones delivered.
+        Update: Map<string, JVal> -> unit
+        /// Release everything the mount created. After it returns, the renderer
+        /// may remove the element.
+        Dispose: unit -> unit
+    }
+
+/// A `Custom` renderer written against the DOM rather than against React
+/// (Phase 2513). Register it with `CustomRendererRegistry.RegisterDomMount`.
+type CustomDomMount =
+    {
+        /// Start the widget. `element` is a `div` the renderer created for this
+        /// node and emptied; the widget owns its children until `Dispose`
+        /// returns. Called once per appearance of the node in the tree.
+        Mount: Browser.Types.HTMLElement -> Map<string, JVal> -> CustomDomHandle
+        /// Plain text shown in the element until the mount runs, and the whole
+        /// of what a server render emits for the node. It is emitted as text and
+        /// never parsed as markup.
+        Fallback: Map<string, JVal> -> string
+    }
+
+/// The React side of a DOM mount: one function component per mounted node.
+/// Internal, because the contract is `CustomDomMount`; this module is how the
+/// current emitter honours it, and the `Custom` arm in `Render.fs` is its only
+/// other caller.
+module internal DomMountHost =
+    open Fable.Core
+
+    /// What a failed mount renders instead, built by whoever routed the failure.
+    type Failure = { View: unit -> ReactElement }
+
+    /// How a DOM mount's failures reach the renderer. The `Custom` arm supplies
+    /// it, because only the arm knows the node id, the telemetry sink and
+    /// whether an `ErrorBoundary` encloses the node.
+    type Route =
+        {
+            /// A mount or an update threw. Report it, and return what to show.
+            Fail: string -> Failure
+            /// A dispose threw. There is nothing left to show, so it is reported only.
+            Warn: string -> unit
+        }
+
+    type private Props =
+        {| key: string
+           moduleId: string
+           componentId: string
+           mount: CustomDomMount
+           props: Map<string, JVal>
+           fallback: string
+           route: Route option |}
+
+    [<Import("createElement", "react")>]
+    let private createElement (componentFn: obj) (props: obj) : ReactElement = Util.jsNative
+
+    [<Import("cloneElement", "react")>]
+    let private cloneElement (element: ReactElement) (props: obj) : ReactElement = Util.jsNative
+
+    [<Emit("($0 != null && $0.type === $1)")>]
+    let private isElementOf (element: ReactElement) (componentFn: obj) : bool = Util.jsNative
+
+    let private host (p: Props) : ReactElement =
+        let element = React.useElementRef ()
+        let handle = React.useRef (None: CustomDomHandle option)
+        let delivered = React.useRef p.props
+        // The fallback the element was first emitted with. Kept, so a later
+        // render never hands React a different text to write over the widget.
+        let fallback = React.useRef p.fallback
+        let failed, setFailed = React.useState (None: Failure option)
+
+        let name = p.moduleId + "." + p.componentId
+
+        let fail (stage: string) (ex: exn) : unit =
+            let message = sprintf "the DOM mount %s threw in %s: %s" name stage ex.Message
+
+            let failure =
+                match p.route with
+                | Some route -> route.Fail message
+                | None ->
+                    eprintfn "[Fuaran] %s" message
+                    { View = fun () -> Html.div [ prop.text (sprintf "[fuaran:custom %s — %s]" name message) ] }
+
+            setFailed (Some failure)
+
+        let release () : unit =
+            match handle.current with
+            | None -> ()
+            | Some h ->
+                handle.current <- None
+
+                try
+                    h.Dispose()
+                with ex ->
+                    let message = sprintf "the DOM mount %s threw in dispose: %s" name ex.Message
+
+                    match p.route with
+                    | Some route -> route.Warn message
+                    | None -> eprintfn "[Fuaran] %s" message
+
+        // Mount once, after the element is in the document; dispose when the
+        // node leaves the tree. A layout effect, so the widget is in place before
+        // anything scheduled after the commit (the exposed-ids walk among them).
+        React.useLayoutEffect (
+            (fun () ->
+                match element.current with
+                | None -> ()
+                | Some el ->
+                    try
+                        el.textContent <- ""
+                        handle.current <- Some(p.mount.Mount el p.props)
+                        delivered.current <- p.props
+                    with ex ->
+                        fail "mount" ex
+
+                release),
+            [||]
+        )
+
+        // Deliver changed props to a running mount.
+        React.useLayoutEffect (fun () ->
+            match handle.current with
+            | Some h when delivered.current <> p.props ->
+                delivered.current <- p.props
+
+                try
+                    h.Update p.props
+                with ex ->
+                    release ()
+                    fail "update" ex
+            | _ -> ())
+
+        // Distinct keys, so a failure replaces the element outright rather than
+        // asking React to reconcile children the widget created.
+        match failed with
+        | Some failure -> React.KeyedFragment("failed", [ failure.View() ])
+        | None -> Html.div [ prop.key "mounted"; prop.ref element; prop.text fallback.current ]
+
+    /// The element a DOM-mount registration renders: the host component, keyed
+    /// on the renderer's ids so a different `Custom` at the same place mounts
+    /// afresh rather than inheriting this one's widget. Browser-only, like every
+    /// element this renderer builds.
+    let element (moduleId: string) (componentId: string) (mount: CustomDomMount) : Map<string, JVal> -> ReactElement =
+        fun props ->
+#if FABLE_COMPILER
+            createElement
+                (box host)
+                (box
+                    {| key = moduleId + "." + componentId
+                       moduleId = moduleId
+                       componentId = componentId
+                       mount = mount
+                       props = props
+                       fallback = mount.Fallback props
+                       route = (None: Route option) |})
+#else
+            raise (
+                System.NotSupportedException(
+                    sprintf "the DOM mount %s.%s builds its element only in the browser" moduleId componentId
+                )
+            )
+#endif
+
+    /// True when `element` is a DOM mount's host element.
+    let isHost (element: ReactElement) : bool =
+#if FABLE_COMPILER
+        isElementOf element (box host)
+#else
+        ignore element
+        false
+#endif
+
+    /// The host element with its failure route attached.
+    let withRoute (route: Route) (element: ReactElement) : ReactElement =
+        cloneElement element (box {| route = Some route |})
+
+/// Registry for consumer-side custom renderers. Holds a
+/// dictionary keyed on `(moduleId, componentId)` whose values produce
+/// `ReactElement` from the typed-tree prop bag. The renderer's `Custom`
+/// arm consults `IFuaranRuntime.TryRenderCustom` first; this class is the
+/// canonical implementation hosts use to populate the runtime side.
+///
+/// Originally the `NodeKind.Custom` arm rendered only a labelled
+/// placeholder; consumers had no API to register a real renderer. Now
+/// any host (platform adapter, standalone browser-runtime consumer,
+/// the test runner) can construct a registry, register renderers
+/// keyed on `(moduleId, componentId)`, and pass it into the runtime
+/// constructor (`MutableRuntime` for tests, `BrowserRuntime` for the
+/// browser).
 type CustomRendererRegistry() =
     // Phase 783 — the key gains a RENDER SCOPE. It was `(moduleId, componentId)`
     // process-wide, and lookup was a raw `TryGetValue` on ids taken straight off
@@ -180,6 +379,23 @@ type CustomRendererRegistry() =
             ?contentHash: ContentHash
         ) : unit =
         renderers[(Some scope, moduleId, componentId)] <- (renderFn, contentHash)
+
+    /// Register (or replace) a DOM mount (Phase 2513) for `(moduleId, componentId)`
+    /// in the ROOT render scope. It lands in the same table as a React-form
+    /// renderer and is reached by the same scoped lookup, so the `Custom` arm's
+    /// hash check and exposed-ids walk apply to it unchanged. Registering either
+    /// form for a key replaces the other.
+    member _.RegisterDomMount
+        (moduleId: string, componentId: string, mount: CustomDomMount, ?contentHash: ContentHash)
+        : unit =
+        renderers[(None, moduleId, componentId)] <- (DomMountHost.element moduleId componentId mount, contentHash)
+
+    /// Register (or replace) a DOM mount reachable ONLY from trees rendered under
+    /// `scope`, on `RegisterInScope`'s terms (Phase 783, Phase 2513).
+    member _.RegisterDomMountInScope
+        (scope: string, moduleId: string, componentId: string, mount: CustomDomMount, ?contentHash: ContentHash)
+        : unit =
+        renderers[(Some scope, moduleId, componentId)] <- (DomMountHost.element moduleId componentId mount, contentHash)
 
     /// Register a typed Custom **contract** (Phase 164) — one call wires the
     /// decode + render + the contract's derived content hash. A decode failure

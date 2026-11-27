@@ -1578,6 +1578,16 @@ let private formatHashMismatchPayload
         (renderHash expected)
         (renderHash actual)
 
+/// The fallbacks of the `ErrorBoundary` nodes whose child subtree is being
+/// rendered right now, innermost first (Phase 2513). A DOM-mount `Custom` fails
+/// AFTER the render that built it, in its mount or update, so the boundary's
+/// synchronous catch never sees it; the `Custom` arm takes the innermost entry
+/// while it builds the node and the mount renders it if it fails. Pushed and
+/// popped by the `ErrorBoundary` arm around its child's render, which is
+/// synchronous, so the stack is empty between renders. Each entry takes the
+/// failure message and the correlation id the failure was reported under.
+let mutable private boundaryFallbacks: (string -> string -> ReactElement) list = []
+
 #if FABLE_COMPILER
 /// Fable-side post-paint DOM walk. setTimeout(0) defers past React's
 /// commit phase; the walk then scans the Custom wrapper's subtree for
@@ -3134,20 +3144,13 @@ let rec private renderKind
         // `ErrorBoundary`, the inner boundary's `InErrorBoundary = true`
         // override scopes locally — the inner catches its own subtree's
         // throws and the outer never sees them.
+        //
+        // A DOM-mount `Custom` in the child fails later, in its mount or update
+        // (Phase 2513): it reaches this boundary through `boundaryFallbacks`,
+        // which holds `renderFallback` while the child renders.
         let boundaryCtx = { ctx with InErrorBoundary = true }
 
-        try
-            render boundaryCtx spec.Child
-        with ex ->
-            let corrId =
-                emitRenderFailureWithContext
-                    ctx.TelemetrySink
-                    ctx.SessionContext
-                    parentNodeId
-                    (nodeKindName kind)
-                    ex.Message
-                    RenderFailureSource.ErrorBoundary
-
+        let renderFallback (primaryMessage: string) (corrId: string) : ReactElement =
             let fallbackCtx = { ctx with InErrorBoundary = false }
 
             try
@@ -3171,9 +3174,28 @@ let rec private renderKind
                     ElementPlan.NodePlan.renderFailure
                         parentNodeId
                         (nodeKindName kind + ".Fallback")
-                        (RenderParity.boundaryDoubleFailureMessage ex.Message ex2.Message)
+                        (RenderParity.boundaryDoubleFailureMessage primaryMessage ex2.Message)
                         corrId
                 )
+
+        try
+            boundaryFallbacks <- renderFallback :: boundaryFallbacks
+
+            try
+                render boundaryCtx spec.Child
+            finally
+                boundaryFallbacks <- List.tail boundaryFallbacks
+        with ex ->
+            let corrId =
+                emitRenderFailureWithContext
+                    ctx.TelemetrySink
+                    ctx.SessionContext
+                    parentNodeId
+                    (nodeKindName kind)
+                    ex.Message
+                    RenderFailureSource.ErrorBoundary
+
+            renderFallback ex.Message corrId
     | NodeKind.Switch spec ->
         // State-bound conditional child (Phase 392). Read the reactive state
         // value at `spec.StateKey` (scope-aware, mirroring `writeBackTo` /
@@ -3330,12 +3352,56 @@ let rec private renderKind
         let registryHash = registryProbe |> Option.bind snd
         let outcome = classifyCustomHash ctx.Policy.CustomHashFloor contentHash registryHash
 
+        // A DOM mount (Phase 2513) fails after this render, so its failure is
+        // routed here, while the node id, the telemetry sink and the enclosing
+        // boundary are known: it is reported as a render failure, and the node
+        // shows the boundary's fallback when one encloses it, else the labelled
+        // failure placeholder the per-node guard shows.
+        let boundaryFallback =
+            if ctx.InErrorBoundary then
+                List.tryHead boundaryFallbacks
+            else
+                None
+
+        let domMountRoute: Runtime.DomMountHost.Route =
+            { Fail =
+                fun message ->
+                    let source =
+                        match boundaryFallback with
+                        | Some _ -> RenderFailureSource.ErrorBoundary
+                        | None -> RenderFailureSource.PerNodeGuard
+
+                    let corrId =
+                        emitRenderFailureWithContext
+                            ctx.TelemetrySink
+                            ctx.SessionContext
+                            parentNodeId
+                            (nodeKindName kind)
+                            message
+                            source
+
+                    { View =
+                        fun () ->
+                            match boundaryFallback with
+                            | Some fallback -> fallback message corrId
+                            | None ->
+                                Emit.plan (
+                                    ElementPlan.NodePlan.renderFailure parentNodeId (nodeKindName kind) message corrId
+                                ) }
+              Warn = ctx.Runtime.Warn }
+
+        let routed (element: ReactElement) : ReactElement =
+            if Runtime.DomMountHost.isHost element then
+                Runtime.DomMountHost.withRoute domMountRoute element
+            else
+                element
+
         let dispatchToRenderer () : ReactElement =
             match registryProbe with
-            | Some(fn, _) -> fn props
+            | Some(fn, _) -> routed (fn props)
             | None ->
                 match ctx.Runtime.TryRenderCustomInScope(ctx.Policy.Scope, moduleId, componentId, props) with
-                | Some element -> element
+                | Some element -> routed element
                 | None -> renderPlaceholder ()
 
         /// Refuse the node: warn, then route through `OnError` when the consumer

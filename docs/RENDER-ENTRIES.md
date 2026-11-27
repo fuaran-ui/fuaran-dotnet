@@ -172,6 +172,22 @@ return `None`, so every `Custom` node renders a placeholder. A registered custom
 renderer is a host trust boundary; see the "Custom-renderer trust boundary"
 section of [`../SANITIZATION.md`](../SANITIZATION.md).
 
+### `CustomRendererRegistry.RegisterDomMount` — a renderer that is not a React element
+
+A registration takes one of two forms under one key: a function returning a
+`ReactElement`, or a `CustomDomMount` (Phase 2513), which is given an emptied
+element and the node's props and hands back an `Update` and a `Dispose`. Both
+are reached through the same `TryGetCustomRendererInScope` lookup, so a DOM mount
+needs no runtime member of its own and works through every entry that supplies a
+runtime. The mount runs after the commit, so its failure cannot reach an
+`ErrorBoundary`'s synchronous catch; the `Custom` arm routes it instead, as a
+render failure, to the enclosing boundary's fallback when the node is built in
+that boundary's render pass, and otherwise to the labelled failure placeholder.
+A `Custom` node re-rendered later by a reader of its own (`renderStateReactive`)
+is built outside that pass and takes the placeholder. On the server, register
+the mount's fallback with `Registry.registerDomMount`. A DOM mount is not
+`NodeKind.Mount`, which composes a guest tree (below).
+
 ### `GuestSeam` — the mount capability policy
 
 `NodeKind.Mount` resolves its guest through `IFuaranRuntime.TryLoadGuest` and

@@ -7829,6 +7829,37 @@ document that declares no ceiling is exactly the control it was.
   when Phase 2804 advanced the renderer, so `RendererWebCheck` was red on `main`. The re-sync brings the chart data
   table (Phase 2804) and the handler-strip fix to .NET hosts that serve the embedded renderer.
 
+### Phase 2513 — a `Custom` renderer may be a DOM mount (additive)
+
+**Class: additive.** Packages `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. New types and members only; no
+record gains a field, no union gains a case, and no existing member changes. **This is a higher class than the slot
+was opened at** (a fix): the number is the release's to settle, and this entry does not move it.
+
+- **New in `Fuaran.UI.Renderer.Runtime`.** The records `CustomDomMount` (`Mount`, `Fallback`) and `CustomDomHandle`
+  (`Update`, `Dispose`), and the members `CustomRendererRegistry.RegisterDomMount` and `RegisterDomMountInScope`. A
+  DOM mount lands in the same table as a React-form renderer, so the scoped lookup, the `ContentHash` check, the
+  `ExposedNodeIds` walk and `Registrations` treat it exactly as one; registering either form for a key replaces the
+  other. The contract names no React or Feliz type.
+- **New in `Fuaran.UI.Renderer.Server.Registry`.** `domMountFallback`, `registerDomMount` and
+  `registerDomMountInScope`: a server render of a DOM-mount node emits the declared fallback as escaped text in a bare
+  `div`, which is the element the client builds before it mounts.
+- **Behaviour.** The client mounts after the node is in the document, delivers changed props through `Update` (equal
+  props are not an update), and disposes when the node leaves the tree. A throwing `Mount` or `Update` is reported to
+  the telemetry sink as a render failure and the node shows the enclosing `ErrorBoundary`'s fallback, or the labelled
+  failure placeholder; a throwing `Dispose` goes to `IFuaranRuntime.Warn`.
+- **What does not change.** `IFuaranRuntime` gains no member, so no host implementing it by hand edits anything. A
+  React-form renderer's element is served verbatim, as before, and a tree that holds no DOM mount renders
+  byte-identically. No wire byte moves and no kind is added, so the vocabulary charter's gates are not engaged.
+- **Escape hatch.** The `Custom` entry of the escape-hatch inventory is amended in the same change: the host's widget
+  now receives a live DOM element, which is a wider grant than a returned element, and the entry says what mediates it
+  and what is not claimed.
+
+**What a consumer must do.** Nothing.
+
+**Certified by** `tests/fable-render/DomMountTests.fs` (mount, update, dispose and failure on a mounted tree, each
+beside its control), the DOM-mount cases in `src/Fuaran.UI.Tests/CustomRendererTests.fs` and
+`src/Fuaran.UI.Renderer.Server.Tests/CustomContractServerTests.fs`.
+
 ---
 
 ## 0.109.0 (RELEASED — tagged v0.109.0 at 59bdab44, 2026-11-27) — the slot opened after v0.108.0 was released, by Phase 2867 (a declared direction keeps the node's alignment), whose change is to the reference stylesheet only

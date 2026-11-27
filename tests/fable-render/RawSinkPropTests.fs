@@ -26,6 +26,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open FableRender.Dom
 open FableRender.Expecto
 
 /// The first `dangerouslySetInnerHTML` object in `root`'s element tree, or null.
@@ -39,24 +40,6 @@ open FableRender.Expecto
   return walk($0);
 })()""")>]
 let private sinkPropOf (root: ReactElement) : obj = jsNative
-
-[<Import("createRoot", "react-dom/client")>]
-let private createRoot (container: obj) : obj = jsNative
-
-[<Import("flushSync", "react-dom")>]
-let private flushSync (work: unit -> unit) : unit = jsNative
-
-[<Emit("$0.render($1)")>]
-let private rootRender (root: obj) (element: ReactElement) : unit = jsNative
-
-[<Emit("$0.unmount()")>]
-let private rootUnmount (root: obj) : unit = jsNative
-
-[<Emit("(() => { const d = document.createElement('div'); document.body.appendChild(d); return d; })()")>]
-let private newContainer () : obj = jsNative
-
-[<Emit("$0.remove()")>]
-let private removeContainer (container: obj) : unit = jsNative
 
 [<Emit("(() => { const o = new MutationObserver(() => {}); o.observe($0, { childList: true, subtree: true, characterData: true, attributes: true }); return o; })()")>]
 let private observe (container: obj) : obj = jsNative

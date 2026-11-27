@@ -170,3 +170,42 @@ let tryHashInScope
 
 let tryHash (moduleId: string) (componentId: string) (reg: ServerCustomRendererRegistry) : string option =
     tryHashInScope None moduleId componentId reg
+
+// ─── DOM-mount Custom renderers (Phase 2513) ─────────────────────────────────
+//
+// The client registry accepts a second form of `Custom` renderer, a DOM mount:
+// a function the browser calls with an element and the props, which hands back
+// an update and a dispose. Nothing of it can run here, so a server render of the
+// node emits only the mount's declared FALLBACK, as text inside the same `div`
+// the client emits before the mount runs. The markup is inert: it carries no
+// script and no handler, and the text is escaped, so the fallback cannot become
+// markup whatever its props hold. A hydrating client finds the element it would
+// have built, empties it, and mounts the widget there.
+
+/// The server renderer for a DOM mount: `fallback props` as escaped text in a
+/// bare `div`. Compose it with `registerWithHash` or `registerInScopeWithHash`
+/// when the node's content hash is to be verified; `registerDomMount` and
+/// `registerDomMountInScope` cover the unhashed registrations.
+let domMountFallback (fallback: Map<string, JVal> -> string) : ServerCustomRenderer =
+    fun props -> Html.div [ prop.text (fallback props) ]
+
+/// Register a DOM mount's fallback for `(moduleId, componentId)` in the ROOT
+/// render scope (Phase 2513).
+let registerDomMount
+    (moduleId: string)
+    (componentId: string)
+    (fallback: Map<string, JVal> -> string)
+    (reg: ServerCustomRendererRegistry)
+    : ServerCustomRendererRegistry =
+    register moduleId componentId (domMountFallback fallback) reg
+
+/// Register a DOM mount's fallback reachable ONLY from trees rendered under
+/// `scope` (Phase 783, Phase 2513).
+let registerDomMountInScope
+    (scope: string)
+    (moduleId: string)
+    (componentId: string)
+    (fallback: Map<string, JVal> -> string)
+    (reg: ServerCustomRendererRegistry)
+    : ServerCustomRendererRegistry =
+    registerInScope scope moduleId componentId (domMountFallback fallback) reg

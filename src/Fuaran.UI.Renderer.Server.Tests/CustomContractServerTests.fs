@@ -15,6 +15,7 @@ open Feliz.ViewEngine
 open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
+open Fuaran.UI.Renderer
 open Fuaran.UI.Renderer.Server
 
 let private contains (needle: string) (haystack: string) =
@@ -74,4 +75,51 @@ let tests =
               match Registry.tryHash contract.ModuleId contract.ComponentId reg with
               | Some h -> Expect.equal h contract.Hash.Hash "the server records the contract-derived hash"
               | None -> failtest "expected the contract hash to be recorded on the server registry"
+          }
+
+          // ─── Phase 2513 — a mount-only Custom emits its fallback, inert ──
+          test "a DOM mount renders its declared fallback as escaped text and nothing else" {
+              let fallback (props: Map<string, JVal>) =
+                  match Map.tryFind "title" props with
+                  | Some(JStr title) -> "Loading " + title
+                  | _ -> "Loading"
+
+              let customs = Registry.empty |> Registry.registerDomMount "widgets" "dial" fallback
+
+              let node: Node<obj> =
+                  Fuaran.custom
+                      "dial"
+                      "widgets"
+                      "dial"
+                      (Map.ofList [ "title", JStr "<b onclick=\"x()\">gauge</b>" ])
+                      None
+                      []
+
+              let html = Render.renderWith customs BindingResolver.empty node
+
+              Expect.isTrue
+                  (contains "<div>Loading &lt;b onclick=&quot;x()&quot;&gt;gauge&lt;/b&gt;</div>" html)
+                  "the fallback is a bare div of escaped text"
+
+              Expect.isFalse (contains "<b" html) "no markup the props carried survives"
+              Expect.isFalse (contains "<script" html) "no script is emitted"
+              Expect.isFalse (contains "fuaran-custom-placeholder" html) "the registered fallback, not the placeholder"
+          }
+
+          test "a scoped DOM mount's fallback is reached only from its scope" {
+              let customs =
+                  Registry.empty
+                  |> Registry.registerDomMountInScope "admin" "widgets" "dial" (fun _ -> "Loading the dial")
+
+              let node: Node<obj> = Fuaran.custom "dial" "widgets" "dial" Map.empty None []
+
+              Expect.isTrue
+                  (contains
+                      "<div>Loading the dial</div>"
+                      (Render.renderWithInScope "admin" customs BindingResolver.empty node))
+                  "in its scope"
+
+              Expect.isFalse
+                  (contains "Loading the dial" (Render.renderWith customs BindingResolver.empty node))
+                  "not from the root scope"
           } ]

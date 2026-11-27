@@ -875,6 +875,55 @@ Both fields are omittable. They make Custom safer to USE; they do not make Custo
 - You're emitting a Custom slot for a third-party widget whose source is opaque (Stripe Elements, Clerk widgets) – there's nothing meaningful to hash. Leave `contentHash` out; FUARAN055 surfaces the omission, and the validator's manifest can declare it as expected.
 - The Custom body has no addressable interior structure (a pure canvas paint, a single `<iframe>`). Leave `exposedNodeIds` as `[]`.
 
+### The host side: a React element or a DOM mount (Phase 2513)
+
+Nothing in this subsection changes what you emit: a `Custom` node is the same slot whichever way the host renders
+it. It is here so the developer registering the renderer, and you when you are asked which kind of widget a slot
+can hold, know what the seam admits.
+
+A host registers a `Custom` renderer in one of two forms, under the same `(moduleId, componentId)` key and the
+same render scope:
+
+- **The React form.** `CustomRendererRegistry.Register` takes `Map<string, JVal> -> ReactElement`, and the renderer
+  uses the returned element verbatim. Existing registrations are unchanged.
+- **The DOM-mount form.** `CustomRendererRegistry.RegisterDomMount` takes a `CustomDomMount`, which names no React
+  type, so a framework-free widget registers with no React in its own code:
+
+  ```fsharp
+  registry.RegisterDomMount(
+      "widgets",
+      "dial",
+      { Mount =
+          fun element props ->
+              let widget = Dial.create element props // a plain DOM library
+              { Update = fun next -> widget.Set next
+                Dispose = fun () -> widget.Destroy() }
+        Fallback = fun _ -> "Loading the dial" }
+  )
+  ```
+
+  `Mount` runs once, after the node is in the document, with an empty `div` the widget owns until `Dispose`
+  returns. `Update` runs when the node's props change, and not for a re-render with equal props. `Dispose` runs once,
+  when the node leaves the tree. `Fallback` is plain text, shown until `Mount` runs.
+
+**Both forms share the node's declared boundaries.** The registry holds one table, so the `contentHash` check and
+the `exposedNodeIds` walk apply to a DOM mount exactly as to a React renderer; a DOM mount that exposes interior ids
+writes the `data-fuaran-node-id` attributes itself, and does so in `Mount`, before the walk runs.
+
+**A DOM mount's failure is a render failure.** A `Mount` or `Update` that throws runs after the render that built
+the node, so the renderer catches it at the seam: it reports it to the telemetry sink, releases the widget, and the
+node shows the enclosing `ErrorBoundary`'s fallback, or the labelled failure placeholder when there is none. A
+`Dispose` that throws is passed to `IFuaranRuntime.Warn` and does not escape.
+
+**On the server a DOM mount cannot run**, so the server registry emits its fallback instead:
+`Registry.registerDomMount "widgets" "dial" (fun _ -> "Loading the dial")` renders the text, escaped, in a bare
+`div`, which is the element the client builds before it mounts. Use `Registry.domMountFallback` with
+`registerWithHash` when the node's hash is verified on the server.
+
+**Not `Mount`, and not an island.** `NodeKind.Mount` composes a guest *tree* under its own scope, and
+`Fuaran.asIsland` marks a subtree the server emits statically and the client hydrates. A DOM mount is neither: it
+is a `Custom` node whose body is foreign DOM.
+
 ## Tabs with explicit headers + the Custom escape for non-Fuaran tab bodies (Phase 69)
 
 Pre-Phase-69, `Fuaran.tabs` inferred per-tab labels from the child's `Card.Heading` and required every tab body to be expressible in typed Fuaran. Both constraints relaxed 2026-05-29:

@@ -24,8 +24,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Expecto.fs" />
+    <Compile Include="Dom.fs" />
     <Compile Include="SubtreeMemoTests.fs" />
     <Compile Include="RawSinkPropTests.fs" />
+    <Compile Include="DomMountTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

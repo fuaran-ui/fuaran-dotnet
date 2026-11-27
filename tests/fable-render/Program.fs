@@ -28,7 +28,13 @@ let private publish (verdict: Verdict) : unit =
 [<EntryPoint>]
 let main _ =
     let verdict =
-        runTests (testList "fable-render" [ FableRender.SubtreeMemoTests.tests; FableRender.RawSinkPropTests.tests ])
+        runTests (
+            testList
+                "fable-render"
+                [ FableRender.SubtreeMemoTests.tests
+                  FableRender.RawSinkPropTests.tests
+                  FableRender.DomMountTests.tests ]
+        )
 
     publish verdict
     0

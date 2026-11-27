@@ -234,4 +234,53 @@ let tests =
                       (PreEmitDefect.EmptyCustomKindIdentifier("", "MyComp"))
                       "EmptyCustomKindIdentifier still fires on empty moduleId"
               | Ok() -> failtest "Expected validation to fail"
+          }
+
+          // ─── Phase 2513 — a DOM mount registers into the same table ─────
+          //     The mount itself runs only in a browser (tests/fable-render);
+          //     here the registry half: one table, one scoped lookup, one hash.
+          test "RegisterDomMount is reached by the scoped lookup with its hash, and only in its scope" {
+              let registry = CustomRendererRegistry()
+
+              let mount: CustomDomMount =
+                  { Mount = fun _ _ -> failtest "the mount runs only in a browser"
+                    Fallback = fun _ -> "loading" }
+
+              let hash: ContentHash =
+                  { Algorithm = "sha256"
+                    Hash = "dom-mount"
+                    Strictness = HashStrictness.StrictReplay }
+
+              registry.RegisterDomMount("widgets", "dial", mount, hash)
+              registry.RegisterDomMountInScope("admin", "widgets", "gauge", mount)
+
+              match registry.TryGetInScope(None, "widgets", "dial") with
+              | Some(_, registered) -> Expect.equal registered (Some hash) "the hash rides the registration"
+              | None -> failtest "a root DOM mount is reached from the root scope"
+
+              Expect.isNone (registry.TryGetInScope(Some "admin", "widgets", "dial")) "not from another scope"
+              Expect.isSome (registry.TryGetInScope(Some "admin", "widgets", "gauge")) "a scoped one from its scope"
+              Expect.isNone (registry.TryGetInScope(None, "widgets", "gauge")) "and not from the root"
+
+              Expect.equal
+                  (registry.Registrations
+                   |> List.map (fun r -> r.Scope, r.ComponentId, r.HasContentHash))
+                  [ None, "dial", true; Some "admin", "gauge", false ]
+                  "both are listed, as custom renderers"
+          }
+
+          test "a DOM mount and a React-form renderer for one key replace each other" {
+              let registry = CustomRendererRegistry()
+
+              let mount: CustomDomMount =
+                  { Mount = fun _ _ -> failtest "the mount runs only in a browser"
+                    Fallback = fun _ -> "" }
+
+              registry.RegisterDomMount("widgets", "dial", mount)
+              registry.Register("widgets", "dial", (fun _ -> stubElement))
+              Expect.equal registry.Count 1 "one key, one entry"
+
+              match registry.TryGetInScope(None, "widgets", "dial") with
+              | Some(fn, _) -> Expect.isTrue (obj.ReferenceEquals(fn Map.empty, stubElement)) "the later form wins"
+              | None -> failtest "the key is registered"
           } ]
