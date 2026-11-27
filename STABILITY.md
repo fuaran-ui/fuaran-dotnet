@@ -7813,6 +7813,24 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.109.1 — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix (DRAFT — untagged)
+
+**Class: no public-surface change.** No type, function or record moves. Two behaviours change.
+
+- **The event-handler strip reads attribute names, not values or text.** `Sanitize.sanitizeMarkdownHtml` used to
+  remove any space-led `on<letter>` run between `<` and `>`, blind to attribute values, so
+  `aria-label="Weekly users: online"` lost the word and its closing quote, any `<` was read as a tag opening, a
+  slash-separated `<a/onclick=…>` survived, and `onmouseover = '…'` lost only its name. The strip now follows the
+  HTML tokenizer: a tag opens only at `<` or `</` followed by an ASCII letter, and an attribute whose name starts with
+  `on` (any case) is removed together with its value; every other byte is copied. It is the fuaran-ts fix ported, and
+  the two produce identical output, so a server-rendered page and the client that hydrates it agree. The
+  slash-separated form is no longer a documented non-goal (`SANITIZATION.md`).
+- **`Fuaran.UI.Renderer.Web` embeds `@fuaran-ui/renderer` 0.30.0.** The embedded browser bundle had stayed at 0.29.2
+  when Phase 2804 advanced the renderer, so `RendererWebCheck` was red on `main`. The re-sync brings the chart data
+  table (Phase 2804) and the handler-strip fix to .NET hosts that serve the embedded renderer.
+
+---
+
 ## 0.109.0 (RELEASED — tagged v0.109.0 at 59bdab44, 2026-11-27) — the slot opened after v0.108.0 was released, by Phase 2867 (a declared direction keeps the node's alignment), whose change is to the reference stylesheet only
 
 **Class: no public-surface change.** No type, function or record moves. The reference stylesheet that
