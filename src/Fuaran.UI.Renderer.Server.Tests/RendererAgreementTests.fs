@@ -496,7 +496,9 @@ let producerBytes =
         [ test "a drawing whose label the sanitiser would rewrite" {
               let spec =
                   { Defaults.drawing with
-                      Title = Some(TextSource.Literal "Sales onload=up")
+                      // Scheme-shaped: since Phase 2804 a handler-shaped label is
+                      // one the sweep leaves alone, so it would pin nothing here.
+                      Title = Some(TextSource.Literal "See javascript:void")
                       Description = Some(TextSource.Literal "A figure") }
 
               let markup =
@@ -507,4 +509,23 @@ let producerBytes =
               Expect.isTrue
                   (contains markup (Render.renderStatic (Fuaran.drawingSpec "d" spec)))
                   "the server's sink carries the shared producer's bytes, which the client's mint leaves alone"
+          }
+
+          // Phase 2804. A series named "online" used to lose its name, and its
+          // value's closing quote, from the `aria-label` wherever the sweep ran.
+          test "a label holding on-text is the same bytes through the sweep as from the server" {
+              let spec =
+                  { Defaults.drawing with
+                      Title = Some(TextSource.Literal "Weekly users: online")
+                      Description = Some(TextSource.Literal "Users online, once only") }
+
+              let markup =
+                  DrawingSvg.render BindingResolver.empty (BindingResolver.resolveTextSource BindingResolver.empty) spec
+
+              Expect.stringContains markup "aria-label=\"Weekly users: online" "the fixture carries on-text in a value"
+              Expect.equal (Sanitize.sanitizeMarkdownHtml markup) markup "the sweep leaves an on-text value alone"
+
+              Expect.isTrue
+                  (contains markup (Render.renderStatic (Fuaran.drawingSpec "d" spec)))
+                  "the server emits the same bytes"
           } ]

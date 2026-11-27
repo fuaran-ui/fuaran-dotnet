@@ -887,6 +887,147 @@ let private indexOfFolded (hay: string) (needle: string) (start: int) : int =
 
     found
 
+let private isAsciiLetter (c: char) =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+let private isHtmlSpace (c: char) =
+    c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '\f'
+
+/// An attribute name the handler strip removes: `on` under the ASCII fold, then at least one more
+/// unit. That class is wider than the event-handler set, never narrower.
+let private isHandlerName (name: string) =
+    name.Length > 2 && foldAscii name[0] = 'o' && foldAscii name[1] = 'n'
+
+/// One tag starting at `lt` (its name at `nameAt`), minus its handler attributes, and the index the
+/// caller resumes from: just past the closing `>`, the end of input, or the `<` at which a quoted
+/// value was abandoned.
+let private scanTag (s: string) (lt: int) (nameAt: int) : string * int =
+    let n = s.Length
+    let mutable i = nameAt
+
+    while i < n && not (isHtmlSpace s[i]) && s[i] <> '/' && s[i] <> '>' do
+        i <- i + 1
+
+    let mutable out = s.Substring(lt, i - lt)
+    // Separators seen since the last emitted attribute. When an attribute is dropped, the separator
+    // before it goes with it, and the next kept attribute is given one space if it would otherwise
+    // touch what precedes it.
+    let mutable pending = ""
+    let mutable needSeparator = false
+    let mutable resumeAt = -1
+
+    while resumeAt < 0 && i < n do
+        let c = s[i]
+
+        if isHtmlSpace c || c = '/' then
+            pending <- pending + string c
+            i <- i + 1
+        elif c = '>' then
+            out <- out + pending + ">"
+            pending <- ""
+            resumeAt <- i + 1
+        else
+            let start = i
+            i <- i + 1 // the first name unit, which may be `=`
+
+            while i < n && not (isHtmlSpace s[i]) && s[i] <> '/' && s[i] <> '>' && s[i] <> '=' do
+                i <- i + 1
+
+            let name = s.Substring(start, i - start)
+            let mutable k = i
+
+            while k < n && isHtmlSpace s[k] do
+                k <- k + 1
+
+            let mutable abandonedAt = -1
+
+            if k < n && s[k] = '=' then
+                k <- k + 1
+
+                while k < n && isHtmlSpace s[k] do
+                    k <- k + 1
+
+                if k < n && (s[k] = '"' || s[k] = '\'') then
+                    let close = s.IndexOf(s[k], k + 1)
+                    let lt2 = s.IndexOf('<', k + 1)
+
+                    if lt2 >= 0 && (close < 0 || lt2 < close) then
+                        i <- lt2
+                        abandonedAt <- lt2
+                    else
+                        i <- if close < 0 then n else close + 1
+                else
+                    while k < n && not (isHtmlSpace s[k]) && s[k] <> '>' do
+                        k <- k + 1
+
+                    i <- k
+
+            if isHandlerName name then
+                if pending <> "" then
+                    needSeparator <- true
+            else
+                let sep = if pending = "" && needSeparator then " " else pending
+                out <- out + sep + s.Substring(start, i - start)
+                needSeparator <- false
+
+            pending <- ""
+
+            if abandonedAt >= 0 then
+                resumeAt <- abandonedAt
+
+    if resumeAt < 0 then
+        out <- out + pending
+        resumeAt <- n
+
+    out, resumeAt
+
+/// Strip inline `on*` event-handler attributes, by reading attribute NAMES (Phase 2804; the
+/// TypeScript renderer's `stripEventHandlers` is the same scan, and the two must agree byte for
+/// byte, since the client hydrates what the server rendered).
+///
+/// The previous sweep matched any white-space-led `on<letter>` run inside a `<...>` interior,
+/// attribute values included, so a chart whose series was named "online" lost the word (and the
+/// value's closing quote) from its SVG `aria-label`: ` online"` read as a boolean attribute. This
+/// pass tokenizes each tag the way the HTML tokenizer does and decides on the attribute name alone.
+///
+///  - A tag opens only at `<` followed by an ASCII letter (or `</` and a letter), which is where the
+///    HTML tokenizer opens one. Any other `<` is text, as it is to the browser, and text is never
+///    rewritten.
+///  - Inside a tag, attributes are separated by white space and `/`, a name runs to white space,
+///    `/`, `>` or `=` (a leading `=` belongs to the name), and a value is double-quoted,
+///    single-quoted or unquoted. A quoted value may be followed directly by the next attribute.
+///  - An attribute whose name begins with `on` (ASCII case-insensitive) and is longer than `on` is
+///    removed together with its value.
+///  - A quoted value that reaches a `<` before its closing quote is NOT trusted to be a value. The
+///    scan ends the attribute there and reads on from the `<` as markup, so a context this scan does
+///    not model (a comment, raw text, a stray quote) can make it strip more than a browser would,
+///    never less.
+///
+/// Everything else, separators included, is copied unit for unit.
+let private stripEventHandlers (s: string) : string =
+    let n = s.Length
+    let mutable out = ""
+    let mutable i = 0
+
+    while i < n do
+        let lt = s.IndexOf('<', i)
+
+        if lt < 0 then
+            out <- out + s.Substring(i)
+            i <- n
+        else
+            let nameAt = if lt + 1 < n && s[lt + 1] = '/' then lt + 2 else lt + 1
+
+            if nameAt >= n || not (isAsciiLetter s[nameAt]) then
+                out <- out + s.Substring(i, lt + 1 - i)
+                i <- lt + 1
+            else
+                let tag, resume = scanTag s lt nameAt
+                out <- out + s.Substring(i, lt - i) + tag
+                i <- resume
+
+    out
+
 /// One pass of the sweep `sanitizeMarkdownHtml` repeats to a fixed point; its contract is
 /// documented there.
 let private scrubPass (html: string) : string =
@@ -959,90 +1100,11 @@ let private scrubPass (html: string) : string =
 
                             keepGoing <- false
 
-        // Strip inline `on*="..."` event handlers. Scan for ` on` (with a
-        // leading whitespace) that occurs INSIDE a tag's start-tag interior
-        // (between an unescaped `<` and its `>`) and remove up to the matching
-        // closing quote. Conservative — matches `onclick=`, `onload=`, etc.
-        //
-        // The tag-interior anchor is load-bearing: without it the scan matches
-        // the leading-whitespace-`on<letter>` pattern in ordinary prose — the
-        // English words "one", "only", "once", "onto", "online", … — and the
-        // boolean-attribute branch below then deletes the word from body text.
-        // Because `sanitizeMarkdownHtml` runs over the deterministic
-        // `Markdown.toHtml` output (raw HTML already escaped by construction),
-        // a real event-handler attribute can only appear inside a tag the
-        // renderer itself emitted, so restricting the scan to tag interiors is
-        // both correct and removes the body-text false positive.
-        let stripEventHandlers (input: string) : string =
-            let mutable s = input
-            let mutable keepGoing = true
-
-            while keepGoing do
-                // Scanned on `s` itself, folding per unit, so every index below is an index into
-                // the string it is applied to (Phase 2010).
-                let mutable found = -1
-                let mutable i = 0
-                let mutable insideTag = false
-
-                while i < s.Length - 3 && found < 0 do
-                    let ch = s[i]
-
-                    if ch = '<' then
-                        insideTag <- true
-                    elif ch = '>' then
-                        insideTag <- false
-                    elif
-                        insideTag
-                        && (ch = ' ' || ch = '\t' || ch = '\n')
-                        && foldAscii s[i + 1] = 'o'
-                        && foldAscii s[i + 2] = 'n'
-                        && (Char.IsLetter s[i + 3])
-                    then
-                        found <- i
-
-                    i <- i + 1
-
-                if found < 0 then
-                    keepGoing <- false
-                else
-                    // Find the `=` then the value's terminator (matching
-                    // quote OR space OR `>` for unquoted values).
-                    let eq = s.IndexOf('=', found)
-                    let nextSpace = s.IndexOfAny([| ' '; '\t'; '\n'; '>' |], found + 1)
-
-                    if eq < 0 || (nextSpace >= 0 && nextSpace < eq) then
-                        // No `=` — likely a boolean attribute like `onload`.
-                        // Strip the attribute name only.
-                        let stopAt = if nextSpace >= 0 then nextSpace else s.Length
-
-                        s <- s.Remove(found, stopAt - found)
-                    else
-                        // Skip leading whitespace after `=`
-                        let mutable v = eq + 1
-
-                        while v < s.Length && (s[v] = ' ' || s[v] = '\t') do
-                            v <- v + 1
-
-                        let stopAt =
-                            if v < s.Length && (s[v] = '\'' || s[v] = '"') then
-                                let q = s[v]
-                                let close = s.IndexOf(q, v + 1)
-                                if close >= 0 then close + 1 else s.Length
-                            else
-                                // Unquoted — stop at next whitespace or `>`.
-                                let candidate = s.IndexOfAny([| ' '; '\t'; '\n'; '>' |], v)
-
-                                if candidate >= 0 then candidate else s.Length
-
-                        s <- s.Remove(found, stopAt - found)
-
-            s
-
         result <- stripEventHandlers result
 
-        // Strip `javascript:` / `vbscript:` URLs — TAG-INTERIOR ANCHORED, the
-        // same discipline `stripEventHandlers` already keeps and for the same
-        // reason (Phase 1523).
+        // Strip `javascript:` / `vbscript:` URLs — TAG-INTERIOR ANCHORED, so
+        // that text is never rewritten, the discipline `stripEventHandlers`
+        // also keeps (Phase 1523).
         //
         // Unanchored, this sweep rewrote VISIBLE PROSE. The markdown source
         // `Never write \`javascript:\` in an href` renders to a `<code>` element
@@ -1061,8 +1123,8 @@ let private scrubPass (html: string) : string =
         // renderer has already escaped that text by construction — which is
         // what makes leaving it alone safe as well as correct.
         //
-        // The interior test is the same single pass `stripEventHandlers` uses:
-        // `<` opens an interior, `>` closes it. That is approximate on
+        // The interior test is a single pass: `<` opens an interior, `>`
+        // closes it (`stripEventHandlers` tokenizes tags instead, Phase 2804). That is approximate on
         // arbitrary HTML (a `>` inside a quoted attribute value ends the
         // interior early) and sound on this function's documented input, the
         // deterministic GFM renderer's output. Erring early ends the interior
@@ -1127,23 +1189,24 @@ let private scrubPass (html: string) : string =
 ///
 /// ⚠️ PRECONDITION (Phase 303): this is a *defence-in-depth* sweep over the Fuaran GFM renderer's
 /// own already-escaped-by-construction output — NOT a general-purpose HTML sanitizer. It is an
-/// approximate substring scanner with the usual gaps (it anchors `on*=` on leading whitespace and
-/// splits attributes on the first `=`/quote), sound for the renderer's narrow output shape but
+/// approximate scanner with the usual gaps (its tag tokenizer models no comment, raw-text or entity
+/// context, and its scheme sweep matches substrings), sound for the renderer's narrow output shape but
 /// bypassable on arbitrary untrusted HTML. Do NOT call it as the sole sanitizer for HTML from an
 /// untrusted source — route such input through a real sanitizer (DOMPurify-class) first.
 ///
 /// **The sweep repeats until it changes nothing** (Phase 2010; Core adopted the same rule in its
 /// Phase 349). One pass is not enough: REMOVING text splices its neighbours together, and the splice
 /// can form something an EARLIER step of the same pass already swept — `<scr<iframe>ipt>` loses its
-/// `<iframe>` after the `<script` step has run and came out a live `<script>`, and stripping the
-/// handler from `<scri onx=""pt>` did the same. At the fixed point no step finds anything, which is
+/// `<iframe>` after the `<script` step has run and came out a live `<script>` (stripping the handler
+/// from `<scri onx=""pt>` did the same until Phase 2804, whose strip keeps a separator). At the fixed point no step finds anything, which is
 /// exactly the floor this function claims, and the output is idempotent by construction.
 ///
 /// It terminates. Count the text's length plus two per `javascript:` / `vbscript:` occurrence in it.
 /// A scheme rewrite leaves that count unchanged or lowers it (the occurrence goes and `about:blank`,
 /// which can form neither scheme, is at most two units longer). Every removal lowers it by at least
-/// two: it takes at least four units (a handler's white space, `on` and a letter; an element's
-/// shortest opener is longer) and can form at most one new scheme at its splice point, because
+/// one: it takes at least three units net (a handler's name is `on` and at least one more unit, and
+/// the one space the strip may give back stands for a separator it took; an element's shortest
+/// opener is longer) and can form at most one new scheme at its splice point, because
 /// neither scheme can overlap another occurrence. And after the first pass a pass that removes
 /// nothing changes nothing: the scheme step ends every pass with no scheme left inside a tag, so a
 /// pass can only find a new one where a removal moved a tag boundary. So every pass after the first

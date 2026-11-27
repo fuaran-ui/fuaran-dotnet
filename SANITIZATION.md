@@ -369,8 +369,8 @@ same thing on another. This sentence is the rule a further host ports, and the .
 
 `Sanitize.sanitizeMarkdownHtml` is a **public** binding, but its correctness rests on a precondition: its
 only intended input is the Fuaran GFM renderer's own already-escaped output (`Markdown.toHtml`). It is an
-approximate substring sweep — it anchors `on*=` stripping on leading whitespace and splits attributes on
-the first `=`/quote — which is sound for the renderer's narrow output shape but **bypassable on arbitrary
+approximate sweep — its tag tokenizer models no comment, raw-text or entity context, and its scheme
+sweep matches substrings — which is sound for the renderer's narrow output shape but **bypassable on arbitrary
 untrusted HTML**. Do not call it as the sole sanitizer for HTML from an untrusted source: route such input
 through a real sanitizer (DOMPurify-class) first, then (optionally) this floor as defence-in-depth. The
 precondition is now stated loudly at the binding's doc-comment.
@@ -398,8 +398,13 @@ substring stripper is weakest against:
   inside the tag) — stripped case-insensitively; a spaced close falls back to open-tag removal.
 - **Malformed nesting** (unbalanced open with no close, open tag with no `>`) — the open tag or the
   tail is removed.
-- **`on*=` handlers** — unquoted, attr-joined, newline-separated, and upper-case handlers are stripped;
-  a legitimate `data-on*` key is *not* a false positive (the tag-interior + leading-whitespace anchor).
+- **`on*=` handlers** — unquoted, attr-joined, newline-separated, slash-separated, spaced-`=` and
+  upper-case handlers are stripped with their values; a legitimate `data-on*` key is *not* a false
+  positive, and neither is on-text in an attribute value or in text (" online" in an `aria-label`).
+  Since Phase 2804 the strip tokenizes each tag and decides on the attribute NAME: a tag opens only at
+  `<` or `</` followed by an ASCII letter, and a quoted value that runs into a `<` is not trusted as a
+  value, so the strip can remove more than a browser parses, never less. The TypeScript renderer runs
+  the same scan, byte for byte.
 - **`javascript:` / `vbscript:`** — case variants neutralised to `about:blank`; the substitution
   inserts `about:blank` so interleaved schemes cannot recombine.
 
@@ -413,8 +418,8 @@ stripper into an HTML parser (Phase 214 task 3):
   them, but `sanitizeUrl` (which the renderer applies to every href) does, returning `None`.
 - **Entity- or numeric-encoded schemes** (`&#106;avascript:`) — the sweep does not HTML-decode before
   matching.
-- **Slash-separated attributes** (`<a/onclick=…>`) — a valid HTML5 shape the GFM renderer never emits;
-  the handler scan anchors on leading whitespace and intentionally does not chase it.
+- **Slash-separated attributes** (`<a/onclick=…>`) were a non-goal until Phase 2804, whose handler
+  strip separates attributes on `/` as the HTML tokenizer does; the case is now pinned as stripped.
 
 **The host-owned ceiling.** For HTML from an *untrusted* source outside the assumed shape, the host
 MUST layer a real DOMPurify-class sanitizer first; this floor is defence-in-depth on top of that, not a
@@ -456,7 +461,7 @@ The validator does NOT walk the typed tree's record-with bypass (`{ node with Ex
 - **The adversarial floor corpus (Phase 214)** pins the markdown-HTML sweep against nested / double /
   split-tag, case + whitespace, and malformed-nesting evasions (the floor holds: no live open
   dangerous tag survives), and pins the documented non-goals (intra-scheme whitespace, entity-encoded
-  schemes, slash-separated attributes) at their actual uncaught behaviour — see "Adversarial floor
+  schemes) at their actual uncaught behaviour — see "Adversarial floor
   corpus (Phase 214)" above.
 
 `Fuaran.UI.Tests/TrustedTypesTests.fs` (Phase 1546) pins the policy:

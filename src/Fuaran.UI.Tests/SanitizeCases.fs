@@ -46,11 +46,88 @@ let private isNameBoundary (s: string) (at: int) =
     at >= s.Length
     || (let c = s[at] in c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '/' || c = '>')
 
+let private isSpace (c: char) =
+    c = ' ' || c = '\t' || c = '\n' || c = '\r' || c = '\f'
+
+let private isLetter (c: char) =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+/// Whether any tag in `s` carries an attribute NAME of the handler class: `on` under the fold and at
+/// least one unit more (Phase 2804). A tag opens at `<` or `</` followed by an ASCII letter; white
+/// space and `/` separate attributes; a name runs to white space, `/`, `>` or `=`, its first unit
+/// included whatever it is; a value is quoted or unquoted. A quoted value that meets a `<` before its
+/// close quote is not a value, and the read goes on from that `<`, as the claim says.
+let private handlerNameAt (s: string) : bool =
+    let n = s.Length
+    let mutable found = false
+    let mutable i = 0
+    // Whether the read is inside a tag, between attributes.
+    let mutable inTag = false
+
+    while not found && i < n do
+        if not inTag then
+            let at = if i + 1 < n && s[i + 1] = '/' then i + 2 else i + 1
+
+            if s[i] = '<' && at < n && isLetter s[at] then
+                inTag <- true
+                i <- at
+
+                while i < n && not (isSpace s[i]) && s[i] <> '/' && s[i] <> '>' do
+                    i <- i + 1
+            else
+                i <- i + 1
+        elif isSpace s[i] || s[i] = '/' then
+            i <- i + 1
+        elif s[i] = '>' then
+            inTag <- false
+            i <- i + 1
+        else
+            let start = i
+            i <- i + 1
+
+            while i < n && not (isSpace s[i]) && s[i] <> '/' && s[i] <> '>' && s[i] <> '=' do
+                i <- i + 1
+
+            if i - start > 2 && fold s[start] = 'o' && fold s[start + 1] = 'n' then
+                found <- true
+
+            let mutable k = i
+
+            while k < n && isSpace s[k] do
+                k <- k + 1
+
+            if k < n && s[k] = '=' then
+                k <- k + 1
+
+                while k < n && isSpace s[k] do
+                    k <- k + 1
+
+                if k < n && (s[k] = '"' || s[k] = '\'') then
+                    let q = s[k]
+                    let mutable e = k + 1
+
+                    while e < n && s[e] <> q && s[e] <> '<' do
+                        e <- e + 1
+
+                    if e < n && s[e] = '<' then
+                        inTag <- false
+                        i <- e
+                    else
+                        i <- if e < n then e + 1 else n
+                else
+                    while k < n && not (isSpace s[k]) && s[k] <> '>' do
+                        k <- k + 1
+
+                    i <- k
+
+    found
+
 /// What the RENDERER's markdown floor forbids in its output, named, or `None`:
 ///
 ///  - a dangerous element opener whose name ends at a tag-name boundary (`<metadata>` is not
 ///    `<meta>`: Phase 1546);
-///  - an `on*` handler inside a start tag — white space, `on` under the fold, a letter;
+///  - an attribute NAME of the `on*` handler class inside a tag (Phase 2804: a value or text that
+///    merely contains " online" is not a handler);
 ///  - a `javascript:` / `vbscript:` scheme inside a tag interior (the nearest `<` or `>` before it
 ///    is a `<`). Outside a tag the token is text the renderer escaped by construction, and the
 ///    floor leaves it as written (Phase 1523).
@@ -75,15 +152,7 @@ let floorBreach (s: string) : string option =
             if inside then
                 match dangerousSchemes |> List.tryFind (fun p -> foldedAt s p i) with
                 | Some p -> breach <- Some("a live " + p + " scheme inside a tag")
-                | None ->
-                    if
-                        (c = ' ' || c = '\t' || c = '\n')
-                        && i + 3 < s.Length
-                        && fold s[i + 1] = 'o'
-                        && fold s[i + 2] = 'n'
-                        && System.Char.IsLetter s[i + 3]
-                    then
-                        breach <- Some "an inline on* handler inside a tag"
+                | None -> ()
 
         if c = '<' then
             inside <- true
@@ -91,6 +160,9 @@ let floorBreach (s: string) : string option =
             inside <- false
 
         i <- i + 1
+
+    if breach.IsNone && handlerNameAt s then
+        breach <- Some "an inline on* handler inside a tag"
 
     breach
 
@@ -148,16 +220,77 @@ let literalCases: (string * string * string) list =
       // Removal splices its neighbours together. One pass of the sweep strips `<iframe>` AFTER the
       // `<script` step has run, joining `<scr` and `ipt>` into a live element; stripping the handler
       // from `<scri onx=""pt>` does the same. Core found both (Phase 349); the floor repeats the
-      // pass until it changes nothing.
+      // pass until it changes nothing. Since Phase 2804 the handler strip removes whole attributes and
+      // keeps a separator between the attributes either side, so removing a handler joins nothing.
       yield ("element joined by removing an element", "<scr<iframe>ipt>alert(1)</script>", "")
-      yield ("element joined by removing a handler", "<scri onx=\"\"pt>alert(1)", "alert(1)")
+      yield ("removing a handler joins nothing", "<scri onx=\"\"pt>alert(1)", "<scri pt>alert(1)")
 
       yield ("handler joined by removing an element", "<a o<iframe></iframe>nclick=\"x\">y</a>", "<a>y</a>")
 
       // Any element swept after `<script` can join one, not only `<iframe>`.
       yield ("element joined after a scheme sweep", "<scr<form></form>ipt>x</script>", "")
 
-      yield ("benign prose", "one only once onto online", "one only once onto online") ]
+      yield ("benign prose", "one only once onto online", "one only once onto online")
+
+      // Phase 2804 — the handler strip reads attribute NAMES, never attribute values or text. It
+      // used to strip any white-space-led `on<letter>` run inside a `<...>` interior, so a chart
+      // series named "online" lost the word, and its value's closing quote, from the drawing's
+      // `aria-label`. The same cases pin the TypeScript twin, byte for byte.
+      for label in [ "online"; "Ontario"; "on sale"; "Users online"; "series: once, only, onto" ] do
+          let svg =
+              "<svg role=\"img\" aria-label=\"Weekly users: "
+              + label
+              + "\"><title>Chart of "
+              + label
+              + "</title><g data-series='by "
+              + label
+              + "'><text x=\"1\"> "
+              + label
+              + "</text></g></svg>"
+
+          yield ("on-text in values and text survives: " + label, svg, svg)
+
+      yield
+          ("on-text in a value that also holds >",
+           "<svg aria-label=\"a > b online\"><rect /></svg>",
+           "<svg aria-label=\"a > b online\"><rect /></svg>")
+
+      yield ("text after a < that opens no tag", "<p>1 <2 online</p>", "<p>1 <2 online</p>")
+
+      yield ("unquoted handler", "<svg onload=alert(1)><rect /></svg>", "<svg><rect /></svg>")
+      yield ("upper-case handler", "<g ONCLICK=\"alert(1)\">x</g>", "<g>x</g>")
+
+      yield ("handler with spaces around =", "<g OnMouseOver = 'alert(1)' class=\"c\">x</g>", "<g class=\"c\">x</g>")
+
+      yield ("boolean handler", "<svg onload>x</svg>", "<svg>x</svg>")
+      yield ("slash-separated handler", "<svg/onload=alert(1)>x</svg>", "<svg>x</svg>")
+      yield ("handler adjacent after a quote", "<a href=\"#\"onclick=\"alert(1)\">x</a>", "<a href=\"#\">x</a>")
+      yield ("attribute adjacent after a handler", "<a onclick=\"alert(1)\"href=\"#\">x</a>", "<a href=\"#\">x</a>")
+
+      yield
+          ("handler after an on-text value",
+           "<svg aria-label=\"online\" onload=\"alert(1)\" />",
+           "<svg aria-label=\"online\" />")
+
+      yield ("handler split by newlines", "<img src=x\nonerror\n=\nalert(1)>", "<img src=x>")
+      yield ("two handlers then a kept attribute", "<svg onload=alert(1) onfocus=alert(2) id=k>", "<svg id=k>")
+
+      // A quoted value that runs into a `<` is not trusted to be a value: the scan reads on from the
+      // `<` as markup, so whatever a browser could parse as a tag after it is scanned as one.
+      yield
+          ("a quoted value cannot hide a tag", "<a title=\"<img onerror=alert(1)>\">x</a>", "<a title=\"<img>\">x</a>")
+
+      yield
+          ("a raw-text close inside a value",
+           "<textarea><a title=\"</textarea><img onerror=alert(1)>\">",
+           "<textarea><a title=\"</textarea><img>\">")
+
+      yield
+          ("a comment close inside a value",
+           "<!-- <a title=\" --><img onerror=alert(1)>\"",
+           "<!-- <a title=\" --><img>\"")
+
+      yield ("a never-closed value", "<a title=\"never closed <svg onload=alert(1)>", "<a title=\"never closed <svg>") ]
 
 // ============================================================================
 //  The certification: Core's sanitisation family over the renderer's floor.

@@ -28,8 +28,10 @@ open Fuaran.UI.Charts
 
 // ─── Hostile inputs ──────────────────────────────────────────────────────────
 
-/// Inside an attribute value both of these sit in a tag interior, which is where
-/// the sanitiser's two sweeps look, so it rewrites an inert label.
+/// Inside an attribute value both of these sit in a tag interior. The scheme
+/// sweep looks there, so it rewrites the inert scheme-shaped label. Since Phase
+/// 2804 the handler strip reads attribute NAMES, so the handler-shaped label,
+/// which only ever sits in a value or in text, is left alone.
 let private inertHandler = "Sales onload=up"
 let private inertScheme = "See javascript:void"
 
@@ -136,15 +138,25 @@ let tests =
         [ testList
               "the sink changes no byte"
               [ for name, svg in
-                    [ "drawing, handler-shaped title", drawingSvg inertHandler
-                      "drawing, scheme-shaped title", drawingSvg inertScheme
-                      "chart, handler-shaped title", chartSvg inertHandler
+                    [ "drawing, scheme-shaped title", drawingSvg inertScheme
                       "chart, scheme-shaped title", chartSvg inertScheme ] do
                     test name {
                         Expect.notEqual
                             (Sanitize.sanitizeMarkdownHtml svg)
                             svg
                             "the fixture must be one the sanitiser would change, or it pins nothing"
+
+                        Expect.equal (TrustedTypes.html svg) svg "a mint must leave the producer's bytes alone"
+                    }
+
+                for name, svg in
+                    [ "drawing, handler-shaped title", drawingSvg inertHandler
+                      "chart, handler-shaped title", chartSvg inertHandler ] do
+                    test name {
+                        Expect.equal
+                            (Sanitize.sanitizeMarkdownHtml svg)
+                            svg
+                            "a handler-shaped VALUE is not an attribute name, so the sanitiser leaves it (Phase 2804)"
 
                         Expect.equal (TrustedTypes.html svg) svg "a mint must leave the producer's bytes alone"
                     }
