@@ -10,6 +10,54 @@ consequence.
 
 ---
 
+## 2026-11-27 — D43: a declared direction keeps the node's alignment, and on a label-and-value kind it belongs on the value's run
+
+**Decided (Phase 2867).** Two rulings on WIRE_FORMAT's declared direction (rules 1 and 5), one entry.
+
+1. **The reference stylesheet takes back the alignment a `dir` attribute implies.** `dir` decides which edge
+   `start` names, so a node declaring `ltr` inside right-to-left prose used to start-align to the left while
+   its neighbours aligned right, which rule 5 forbids ("not a text alignment"). The `.fuaran-dir-ltr,
+   .fuaran-dir-rtl` rule now sets `text-align: match-parent` (stated with the `-webkit-` spelling first,
+   because Chromium and WebKit parse no other), so the node and every descendant that inherits its alignment
+   resolve against the parent's direction. The outermost declared node records the surrounding direction's
+   physical edges as `--fuaran-dir-context-start` / `-end` (read with `:dir()` on its parent), and every rule
+   in the sheet that names `start` or `end` is written `var(--fuaran-dir-context-start, start)`: the context
+   edge inside a declared subtree, the logical value everywhere else, so an undeclared document is unchanged.
+   `RenderObligationTests` pins all three and refuses a new bare `start` / `end` alignment.
+
+2. **On a kind with a label and a value (a Fact, a label-value row, a Metric), the declaration belongs on the
+   VALUE's run, not on the node's wrapper.** Rule 1 places it on "the element that carries the node's run",
+   and WIRE_FORMAT states the member as one VALUE's own base direction. On the wrapper it also re-directs the
+   wrapper's layout: measured in Chromium, a Fact declaring `ltr` in a right-to-left document packs its value
+   (and any icon) to the left, and a label-value row swaps its label and value sides. Those are flex and table
+   placement, a "layout side" in rule 5's words, and no stylesheet rule can take them back from an element
+   that carries `dir` without un-mirroring each layout kind by hand. On the value's own inline run the
+   declaration changes that run's reading order and isolation and nothing else, and the label, written in
+   the document's language, keeps the document's direction.
+
+**Rejected.**
+
+- **Per-kind counter-mirroring in the stylesheet** (`row-reverse`, physical `justify-content`) under a
+  declared wrapper. It restates the layout of every composite kind a second time, goes stale when a kind's
+  layout changes, and is obsolete the day the declaration moves to the run.
+- **Resetting the wrapper's `direction` to the context and re-declaring it on text-bearing descendants.**
+  CSS cannot tell a layout container from an element holding mixed inline text, so the reset breaks rule 1
+  for any node whose own text sits beside inline children.
+- **Physical alignment (`left` / `right`) on the declared node.** It assumes the context was `start`; a
+  node inside a centred region would lose its centring. `match-parent` keeps whatever the parent had.
+
+**Consequences.** Ruling 1 ships in this phase, in the canonical sheet and every tier's byte copy; it holds
+for single-run kinds (text, heading, badge) and for every descendant whose alignment is `text-align`. Ruling
+2 is renderer emission in every host tier, so it is its own phase: until it lands, a label-and-value node
+that declares a direction keeps its label's alignment but still mirrors its row's placement. A host whose
+browser has no `:dir()` (pre-2023 engines) keeps the old start alignment for explicit `start` / `end` rules
+only. The context is read from `dir` attributes, so a host that sets the document's direction with CSS
+`direction` alone, rather than `dir` on `<html>` as D6 asks, gets the logical fallback.
+
+Roadmap: [Phase 2867](../../roadmap/phases/2867-a-declared-direction-keeps-the-nodes-alignment.md).
+
+---
+
 ## 2026-11-26 — D42: the model summary is an F# authoring form until every corpus host decodes `fit` and `predict`
 
 **Decided (Phase 2754).** The model summary ships as `Stdlib.modelSummaryOf` in `Fuaran.UI.Fragments`, a builder
