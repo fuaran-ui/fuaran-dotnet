@@ -1050,6 +1050,84 @@ let private checkAutoIsNoDeclaration () =
         omitted
         "a node declaring `auto` must render identically to the same node omitting the member - `auto` IS the absence of a declaration"
 
+/// Every innermost rule of the canonical stylesheet as `(selector, body)`, comments
+/// stripped and whitespace collapsed. An `@media` block's own rules come out with
+/// their selectors alone, which is all the claims below read.
+let private referenceStylesheetRules () : (string * string) list =
+    match Fuaran.Tests.CorpusRoot.tryRepoRoot () with
+    | None ->
+        failtest
+            "the repository root is not on the walk from the test binary, so the stylesheet half of rule 5 checked nothing"
+    | Some root ->
+        let css =
+            File.ReadAllText(Path.Combine(root, "src", "Fuaran.UI.Renderer", "content", "fuaran-reference.css"))
+
+        let collapse (s: string) = Regex.Replace(s, @"\s+", " ").Trim()
+
+        Regex.Matches(Regex.Replace(css, @"/\*[\s\S]*?\*/", ""), @"([^{}]+)\{([^{}]*)\}")
+        |> Seq.map (fun m -> collapse m.Groups[1].Value, collapse m.Groups[2].Value)
+        |> List.ofSeq
+
+/// Rule 5's ALIGNMENT half, read from the stylesheet because alignment is layout and
+/// emitted markup cannot show it. `dir` decides which edge `start` and `end` name, so a
+/// node declaring `ltr` inside right-to-left prose start-aligns to the LEFT while its
+/// undeclared neighbours align right - the defect this pins (Phase 2867). It measures
+/// three things, each the reason a declared node's text, or a descendant's, would move:
+///
+///   * the declared node takes its alignment from its PARENT's direction
+///     (`text-align: match-parent`, with the `-webkit-` spelling Chromium and WebKit
+///     parse), so it and every descendant inheriting from it align as they would undeclared;
+///   * the outermost declared node records the surrounding direction's physical edges,
+///     for both directions;
+///   * no rule anywhere sets a bare logical `text-align: start` or `end`, which would
+///     resolve against the DECLARED direction inside a declared subtree: each resolves
+///     through the recorded context edge, and falls back to the logical value outside one.
+///
+/// It does not measure flex or grid placement inside a declared node. That is the
+/// layout half, which no stylesheet rule can take back from a wrapper that carries `dir`
+/// (D43): it is answered by where the declaration lands, not here.
+let private checkDeclaredDirectionKeepsAlignment () =
+    let rules = referenceStylesheetRules ()
+
+    let declares (selector: string) (declaration: string) =
+        rules
+        |> List.exists (fun (s, body) -> s = selector && body.Contains(declaration, StringComparison.Ordinal))
+
+    let declaredRule = ".fuaran-dir-ltr, .fuaran-dir-rtl"
+
+    let contextRule (direction: string) =
+        sprintf
+            ":dir(%s) > :is(.fuaran-dir-ltr, .fuaran-dir-rtl):not(:is(.fuaran-dir-ltr, .fuaran-dir-rtl) *)"
+            direction
+
+    let bareLogical =
+        rules
+        |> List.filter (fun (_, body) -> Regex.IsMatch(body, @"(^|;)\s*text-align:\s*(start|end)\s*(;|$)"))
+        |> List.map fst
+
+    let problems =
+        [ if not (declares declaredRule "text-align: -webkit-match-parent;") then
+              "the declared-direction rule does not take its alignment from the parent (`text-align: -webkit-match-parent`)"
+          if not (declares declaredRule "text-align: match-parent;") then
+              "the declared-direction rule does not take its alignment from the parent (`text-align: match-parent`)"
+          for direction, startEdge, endEdge in [ "ltr", "left", "right"; "rtl", "right", "left" ] do
+              if
+                  not (
+                      declares (contextRule direction) (sprintf "--fuaran-dir-context-start: %s;" startEdge)
+                      && declares (contextRule direction) (sprintf "--fuaran-dir-context-end: %s;" endEdge)
+                  )
+              then
+                  sprintf "no rule records the %s context's physical edges on the outermost declared node" direction
+          for selector in bareLogical do
+              sprintf
+                  "`%s` sets a bare logical text-align, which a declared direction re-resolves; write `var(--fuaran-dir-context-start, start)` (or `-end, end`)"
+                  selector ]
+
+    Expect.isEmpty
+        problems
+        ("a declared direction moved a text alignment - rule 5 forbids deriving one from it, so the declared node and its descendants must align exactly as they would undeclared:\n  "
+         + String.concat "\n  " problems)
+
 let private checkNoDerivedDirectionBehaviour () =
     // The SUBTRACTION: a declared emission differs from the undeclared one by
     // the direction attribute and its isolation class, and by nothing else. A
@@ -1078,6 +1156,9 @@ let private checkNoDerivedDirectionBehaviour () =
         (Regex.Matches(html, "dir=\"rtl\"").Count)
         1
         "exactly one element declared a direction, so exactly one may carry it - a direction pushed onto descendants is a derived behaviour rule 5 forbids"
+
+    // ...and the alignment half, which markup cannot show (Phase 2867).
+    checkDeclaredDirectionKeepsAlignment ()
 
 // --- DataGrid: the interactive-row class (Phase 1701) ---------------------
 
