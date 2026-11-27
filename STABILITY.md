@@ -7813,34 +7813,15 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
+## The slot after 0.109.1 (DRAFT — untagged, number not yet raised) — opened after v0.109.1 was released, by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive
 
-**Class: no public-surface change.** No type, function or record moves. Two behaviours change, and one package's
-distribution.
-
-- **The event-handler strip reads attribute names, not values or text.** `Sanitize.sanitizeMarkdownHtml` used to
-  remove any space-led `on<letter>` run between `<` and `>`, blind to attribute values, so
-  `aria-label="Weekly users: online"` lost the word and its closing quote, any `<` was read as a tag opening, a
-  slash-separated `<a/onclick=…>` survived, and `onmouseover = '…'` lost only its name. The strip now follows the
-  HTML tokenizer: a tag opens only at `<` or `</` followed by an ASCII letter, and an attribute whose name starts with
-  `on` (any case) is removed together with its value; every other byte is copied. It is the fuaran-ts fix ported, and
-  the two produce identical output, so a server-rendered page and the client that hydrates it agree. The
-  slash-separated form is no longer a documented non-goal (`SANITIZATION.md`).
-- **`Fuaran.UI.Renderer.Web` embeds `@fuaran-ui/renderer` 0.30.0.** The embedded browser bundle had stayed at 0.29.2
-  when Phase 2804 advanced the renderer, so `RendererWebCheck` was red on `main`. The re-sync brings the chart data
-  table (Phase 2804) and the handler-strip fix to .NET hosts that serve the embedded renderer.
-- **`Fuaran.UI.Fragments` ships its F# sources under `fable/` (Phase 2874).** The certified fragment library was a
-  compiled assembly declared .NET-only, so a Fable consumer, a browser client among them, could not use one certified
-  fragment from published packages. It is now packed the way `Fuaran.UI` is, and the Fable stage compiles it and
-  compares its fragments' wire bytes on .NET and under Node (DECISIONS D44). For a Fable consumer the package becomes
-  usable; a .NET consumer sees the same assembly and the same trees, and the package gains a `fable/` folder it never
-  reads. No fragment's output moves: the corpus fixtures are unchanged.
+**Class: additive.** `v0.109.1` is tagged, so nothing rides it. `<Version>` still reads 0.109.1 when this entry is
+written: the raise that names this slot is the version ledger's act, and an additive change takes the next minor.
 
 ### Phase 2513 — a `Custom` renderer may be a DOM mount (additive)
 
 **Class: additive.** Packages `Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. New types and members only; no
-record gains a field, no union gains a case, and no existing member changes. **This is a higher class than the slot
-was opened at** (a fix): the number is the release's to settle, and this entry does not move it.
+record gains a field, no union gains a case, and no existing member changes.
 
 - **New in `Fuaran.UI.Renderer.Runtime`.** The records `CustomDomMount` (`Mount`, `Fallback`) and `CustomDomHandle`
   (`Update`, `Dispose`), and the members `CustomRendererRegistry.RegisterDomMount` and `RegisterDomMountInScope`. A
@@ -7866,6 +7847,31 @@ was opened at** (a fix): the number is the release's to settle, and this entry d
 **Certified by** `tests/fable-render/DomMountTests.fs` (mount, update, dispose and failure on a mounted tree, each
 beside its control), the DOM-mount cases in `src/Fuaran.UI.Tests/CustomRendererTests.fs` and
 `src/Fuaran.UI.Renderer.Server.Tests/CustomContractServerTests.fs`.
+
+---
+
+## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
+
+**Class: no public-surface change.** No type, function or record moves. Two behaviours change, and one package's
+distribution.
+
+- **The event-handler strip reads attribute names, not values or text.** `Sanitize.sanitizeMarkdownHtml` used to
+  remove any space-led `on<letter>` run between `<` and `>`, blind to attribute values, so
+  `aria-label="Weekly users: online"` lost the word and its closing quote, any `<` was read as a tag opening, a
+  slash-separated `<a/onclick=…>` survived, and `onmouseover = '…'` lost only its name. The strip now follows the
+  HTML tokenizer: a tag opens only at `<` or `</` followed by an ASCII letter, and an attribute whose name starts with
+  `on` (any case) is removed together with its value; every other byte is copied. It is the fuaran-ts fix ported, and
+  the two produce identical output, so a server-rendered page and the client that hydrates it agree. The
+  slash-separated form is no longer a documented non-goal (`SANITIZATION.md`).
+- **`Fuaran.UI.Renderer.Web` embeds `@fuaran-ui/renderer` 0.30.0.** The embedded browser bundle had stayed at 0.29.2
+  when Phase 2804 advanced the renderer, so `RendererWebCheck` was red on `main`. The re-sync brings the chart data
+  table (Phase 2804) and the handler-strip fix to .NET hosts that serve the embedded renderer.
+- **`Fuaran.UI.Fragments` ships its F# sources under `fable/` (Phase 2874).** The certified fragment library was a
+  compiled assembly declared .NET-only, so a Fable consumer, a browser client among them, could not use one certified
+  fragment from published packages. It is now packed the way `Fuaran.UI` is, and the Fable stage compiles it and
+  compares its fragments' wire bytes on .NET and under Node (DECISIONS D44). For a Fable consumer the package becomes
+  usable; a .NET consumer sees the same assembly and the same trees, and the package gains a `fable/` folder it never
+  reads. No fragment's output moves: the corpus fixtures are unchanged.
 
 ---
 
