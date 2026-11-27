@@ -10,49 +10,87 @@ consequence.
 
 ---
 
-## 2026-11-27 — D43: a declared direction keeps the node's alignment, and on a label-and-value kind it belongs on the value's run
+## 2026-11-27 — D43: a declared direction keeps the node's alignment and its tile's layout; a bound node's `auto` alignment is not reachable from the stylesheet
 
-**Decided (Phase 2867).** Two rulings on WIRE_FORMAT's declared direction (rules 1 and 5), one entry.
+**Decided (Phase 2867).** Three rulings on WIRE_FORMAT's declared direction (rules 1 and 5), one entry.
 
 1. **The reference stylesheet takes back the alignment a `dir` attribute implies.** `dir` decides which edge
    `start` names, so a node declaring `ltr` inside right-to-left prose used to start-align to the left while
-   its neighbours aligned right, which rule 5 forbids ("not a text alignment"). The `.fuaran-dir-ltr,
-   .fuaran-dir-rtl` rule now sets `text-align: match-parent` (stated with the `-webkit-` spelling first,
-   because Chromium and WebKit parse no other), so the node and every descendant that inherits its alignment
-   resolve against the parent's direction. The outermost declared node records the surrounding direction's
-   physical edges as `--fuaran-dir-context-start` / `-end` (read with `:dir()` on its parent), and every rule
-   in the sheet that names `start` or `end` is written `var(--fuaran-dir-context-start, start)`: the context
-   edge inside a declared subtree, the logical value everywhere else, so an undeclared document is unchanged.
-   `RenderObligationTests` pins all three and refuses a new bare `start` / `end` alignment.
+   its neighbours aligned right, which rule 5 forbids ("not a text alignment"). Three rules answer it:
+   - The `.fuaran-dir-ltr, .fuaran-dir-rtl` rule sets `text-align: match-parent`. The `-webkit-` spelling
+     comes first, because Chromium parses no other; Firefox and Safari 15.4+ parse the standard one. So the
+     node and every descendant that inherits its alignment resolve against the parent's direction.
+   - A descendant carrying a `dir` of its own, such as a bound leaf's Phase-1114 `auto`, resolves `start`
+     against that direction, as it does undeclared, instead of inheriting the physical edge `match-parent`
+     computes. The rule has no specificity, so any sheet rule that aligns the element wins. It states
+     `start`, so under an ancestor aligned `center` or `justify` such a descendant starts instead of
+     inheriting that value. CSS cannot carry an inherited keyword past a computed physical one.
+   - The outermost declared node records the surrounding direction's physical edges as
+     `--fuaran-dir-context-start` / `-end` (read with `:dir()` on its parent). Every rule in the sheet that
+     names `start` or `end` is written `var(--fuaran-dir-context-start, start)`: the context edge inside a
+     declared subtree, the logical value everywhere else. An undeclared document is unchanged.
 
-2. **On a kind with a label and a value (a Fact, a label-value row, a Metric), the declaration belongs on the
-   VALUE's run, not on the node's wrapper.** Rule 1 places it on "the element that carries the node's run",
-   and WIRE_FORMAT states the member as one VALUE's own base direction. On the wrapper it also re-directs the
-   wrapper's layout: measured in Chromium, a Fact declaring `ltr` in a right-to-left document packs its value
-   (and any icon) to the left, and a label-value row swaps its label and value sides. Those are flex and table
-   placement, a "layout side" in rule 5's words, and no stylesheet rule can take them back from an element
-   that carries `dir` without un-mirroring each layout kind by hand. On the value's own inline run the
-   declaration changes that run's reading order and isolation and nothing else, and the label, written in
-   the document's language, keeps the document's direction.
+2. **On a kind with a label and a value (Fact, LabelValueRow, Metric), the declared direction lands on the
+   value's run, and the stylesheet puts it there.** Rule 1 places the declaration on "the element that
+   carries the node's run". WIRE_FORMAT states the member as one VALUE's own base direction. On the wrapper,
+   `dir` also re-directs the tile: measured in Chromium 131, a Fact declaring `ltr` in a right-to-left
+   document packed its value and icon to the left, and a label-value row swapped its label and value sides.
+   So, per kind:
+   - The declared wrapper takes its context's direction back. An author `direction` overrides the `dir`
+     attribute's mapping, while `:dir()` still reads the attribute.
+   - The value's own run element carries the declared direction and the isolation.
+
+   Measured against undeclared twins in both directions, every part of all three kinds sits where it sits
+   undeclared, and the value run computes the declared direction, isolated. **The trade-off:** the sheet
+   now restates, per kind, which child is that kind's run. A new label-and-value kind, or a change to which
+   element carries a value, must be added beside them. `RenderObligationTests` pins the three by the
+   renderer's own class constants, so a renamed run class goes red. The alternative is the renderer emitting
+   the declaration on the run element in every host (Phase 2869). That would make the per-kind rules
+   obsolete, and they are removed when it lands.
+
+3. **A declared BOUND node aligns with its context, not with the content-resolved direction it has
+   undeclared, and no stylesheet can do otherwise.** Undeclared, a display leaf with runtime-bound text
+   carries `dir="auto"` (D6, `Accessibility.bidiAttributes`), so it aligns by its first strong character. A
+   bound Latin identifier aligns left in a right-to-left document. A declaration replaces `auto` with the
+   declared direction on the same element, and the renderer then emits identical markup for a bound and a
+   literal node with the same text. Undeclared, those two nodes align differently: content-resolved for the
+   bound one, context for the literal one. One stylesheet rule over identical markup cannot reproduce both,
+   so the sheet takes the context reading. It is the one the literal and composite cases need.
+
+   Measured in Chromium 131, a declared bound Latin `ltr` leaf in a right-to-left document now aligns right,
+   where undeclared it aligned left. A declared bound Hebrew `rtl` leaf in a left-to-right document aligns
+   left, where undeclared it aligned right. **This is a change from before Phase 2867.** Then a declared
+   bound node aligned by its declared direction, which matched its undeclared rendering whenever the
+   content's first strong character agreed with the declaration.
+
+   Making it reachable is renderer work: the wrapper keeps the Phase-1114 posture and the declaration goes
+   on the run (Phase 2869). That phase has to answer one more thing. A `dir="auto"` wrapper's resolution
+   skips any descendant that carries `dir`, so once the run carries the declaration, the wrapper no longer
+   resolves from the value's characters.
 
 **Rejected.**
 
-- **Per-kind counter-mirroring in the stylesheet** (`row-reverse`, physical `justify-content`) under a
-  declared wrapper. It restates the layout of every composite kind a second time, goes stale when a kind's
-  layout changes, and is obsolete the day the declaration moves to the run.
-- **Resetting the wrapper's `direction` to the context and re-declaring it on text-bearing descendants.**
-  CSS cannot tell a layout container from an element holding mixed inline text, so the reset breaks rule 1
-  for any node whose own text sits beside inline children.
+- **A generic reset of the wrapper's `direction` with the declaration re-stated on text-bearing
+  descendants.** CSS cannot tell a layout container from an element holding mixed inline text, so a rule
+  over every declared node breaks rule 1 for any node whose own text sits beside inline children. The
+  per-kind form in ruling 2 avoids that, because the sheet already knows each kind's value element by
+  class.
+- **Per-kind counter-mirroring** (`row-reverse`, physical `justify-content`) under a declared wrapper. It
+  restates every composite kind's layout a second time and gets it wrong when the kind's layout changes.
+  Giving the wrapper its context direction back restates nothing but which element is the run.
 - **Physical alignment (`left` / `right`) on the declared node.** It assumes the context was `start`; a
   node inside a centred region would lose its centring. `match-parent` keeps whatever the parent had.
 
-**Consequences.** Ruling 1 ships in this phase, in the canonical sheet and every tier's byte copy; it holds
-for single-run kinds (text, heading, badge) and for every descendant whose alignment is `text-align`. Ruling
-2 is renderer emission in every host tier, so it is its own phase: until it lands, a label-and-value node
-that declares a direction keeps its label's alignment but still mirrors its row's placement. A host whose
-browser has no `:dir()` (pre-2023 engines) keeps the old start alignment for explicit `start` / `end` rules
-only. The context is read from `dir` attributes, so a host that sets the document's direction with CSS
-`direction` alone, rather than `dir` on `<html>` as D6 asks, gets the logical fallback.
+**Consequences.**
+- All three rulings ship in this phase, in the canonical sheet and every tier's byte copy.
+- A declared generic container still lays out its own descendants (a table's columns, a stack's logical
+  margins) in the declared direction. That is the direction's inheritance, which rule 5 leaves to the
+  receiving surface; only alignment is taken back for it.
+- In an engine with no `:dir()` (Chromium before 120, December 2023; Firefox has had it since 49 and
+  Safari since 16.4), the context-edge and per-kind rules do not apply: explicit `start` / `end` rules keep
+  the logical value, and a label-and-value tile keeps the mirrored layout.
+- The context is read from `dir` attributes. A host that sets the document's direction with CSS `direction`
+  alone, rather than `dir` on `<html>` as D6 asks, gets the logical fallbacks.
 
 Roadmap: [Phase 2867](../../roadmap/phases/2867-a-declared-direction-keeps-the-nodes-alignment.md).
 
