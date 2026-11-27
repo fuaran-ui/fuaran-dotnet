@@ -8,6 +8,15 @@ each is **certified valid-for-all-bindings** before it ships — not sampled onc
 library depends on `FSharp.Core` and `Fuaran.UI` and nothing else, so it is Fable-clean and carries
 no renderer, ops or host dependency.
 
+**It is offered to Fable consumers** (Phase 2874). The package ships its F# sources under `fable/`,
+as `Fuaran.UI` does, so a browser client that restores it from the registry transpiles it with the
+rest of its graph. It is held to the same gate as every other client-tier package: the Fable stage
+compiles it under its own properties, and its law harness builds every certified fragment, the
+parameter panel, the scenario comparison and the refinable table (with `refinedPipeline` over a
+sorted, filtered and paged view, and the rows that pipeline evaluates to) on .NET and under Node and
+compares their canonical wire bytes line for line. A browser therefore gets the tree the .NET
+certification measured.
+
 ## The charter: fragments are application-space composition
 
 **This library is not a second language vocabulary, and it never gates, substitutes for, or

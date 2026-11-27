@@ -214,6 +214,15 @@ let main _ =
         printfn "law dag-batch-probe: stated %d/%d" held (List.length checks)
         List.length checks - held
 
+    // ---- law 15: the certified fragments, byte-identical on both pipelines ----
+    // Phase 2874. The library is certified on .NET and offered to Fable consumers;
+    // the printed wire bytes make the runner's line comparison the claim that a
+    // browser builds the tree the certification measured.
+    let fragments = FragmentsLaw.fragmentsLaw ()
+
+    for line in fragments.Lines do
+        printfn "%s" line
+
     let violations =
         Laws.mergeViolations mergeVerdict
         + laneFailures
@@ -232,6 +241,7 @@ let main _ =
         + escape.Violations
         + floatLayout.Violations
         + dagBatchProbeViolations
+        + fragments.Violations
 
     // ---- law 10: a signed page verifies through the published provider ----
     // Phase 2570. Asynchronous, as WebCrypto is: the TOTAL line is printed once
