@@ -2833,6 +2833,73 @@ module InputPlan =
             (Content.Children children)
 
 /// The visualisation kinds (Phase 2290).
+/// Phase 2776 — a lowered chart's data-table alternative (`Accessibility.ChartTable`,
+/// yielded by the chart lowering): a native `<details>` disclosure after the
+/// drawing, which the drawing names in `aria-details`, holding a real table.
+/// Host chrome under `RenderPolicy.ChartTable`, planned once so both renderers
+/// emit the same markup and the server's needs no script.
+///
+/// The table's semantics are the ones a screen reader's table commands read:
+/// a `<caption>`, one `<th scope="col">` per column, and each row's first cell
+/// (its x value, the key the row is about) a `<th scope="row">`.
+[<RequireQualifiedAccess>]
+module ChartTablePlan =
+
+    /// The disclosure's label.
+    let toggleText = "View as table"
+
+    /// The statement under a table cut at its row limit, in the bound grid's
+    /// wording.
+    let limitText (shown: int) (rowCount: int) : string =
+        sprintf "Rows 1–%d of %d" shown rowCount
+
+    /// The disclosure for `table`, its id `disclosureId`.
+    let plan
+        (sources: BindingResolver.BindingSources)
+        (disclosureId: string)
+        (table: Accessibility.ChartTable)
+        : Plan<'E> =
+        let header =
+            Plan.element
+                "tr"
+                []
+                (Content.Children(
+                    table.Columns
+                    |> List.map (fun c -> Plan.element "th" [ Prop.Attr("scope", "col") ] (Content.Text c))
+                ))
+
+        let row (cells: string list) =
+            Plan.element
+                "tr"
+                []
+                (Content.Children(
+                    cells
+                    |> List.mapi (fun i c ->
+                        if i = 0 then
+                            Plan.element "th" [ Prop.Attr("scope", "row") ] (Content.Text c)
+                        else
+                            Plan.element "td" [] (Content.Text c))
+                ))
+
+        let shown = List.length table.Rows
+
+        Plan.element
+            "details"
+            [ Prop.Attr("class", "fuaran-chart-table"); Prop.Attr("id", disclosureId) ]
+            (Content.Children
+                [ Plan.classText "summary" "fuaran-chart-table-toggle" toggleText
+                  Plan.classChildren
+                      "table"
+                      "fuaran-chart-table-grid"
+                      [ Plan.element
+                            "caption"
+                            []
+                            (Content.Text(BindingResolver.resolveTextSource sources table.Caption))
+                        Plan.element "thead" [] (Content.Children [ header ])
+                        Plan.element "tbody" [] (Content.Children(table.Rows |> List.map row)) ]
+                  if shown < table.RowCount then
+                      Plan.classText "p" "fuaran-chart-table-limit" (limitText shown table.RowCount) ])
+
 [<RequireQualifiedAccess>]
 module VisPlan =
 
@@ -3521,13 +3588,16 @@ module VisPlan =
     /// A `Chart`: its state slots, else — when the kind is `lowered` (`Charts.isLowered`) — the Drawing SVG
     /// (`svg` is the renderer's call into `Charts`; it is handed the row source as it resolved, unlisted, so a
     /// renderer can key a memo on it and an unbounded source is read only as deep as the lowering reads),
+    /// with its data table under `policy` (`table` is the renderer's call into `Charts.tableModel`, Phase 2776),
     /// else the placeholder.
     let chart
         (pc: PlanContext<'Msg, 'E>)
+        (policy: RenderPolicy)
         (state: StateBehaviour<'Msg> option)
         (spec: ChartSpec<'Msg>)
         (lowered: bool)
         (svg: ChartSpec<'Msg> -> Row seq -> string)
+        (table: ChartSpec<'Msg> -> Row seq -> Accessibility.ChartTable option)
         : Plan<'E> =
         // Phase 2209 — the rows and the schema they were read from come from ONE
         // evaluation; an axis title the tree leaves absent is filled from its
@@ -3540,7 +3610,27 @@ module VisPlan =
         | None ->
             match resolution with
             | BindingResolver.Resolved rows when lowered ->
-                loweredChart (svg (BindingResolver.FieldDisplay.withAxisTitles fields spec) rows)
+                let titled = BindingResolver.FieldDisplay.withAxisTitles fields spec
+                let drawing = svg titled rows
+
+                // Phase 2776 — the data table, when the policy offers it and the
+                // lowering has values to give: the drawing and its disclosure in
+                // one host element, the drawing naming the disclosure. With the
+                // policy `Off` the table is never computed and the markup is the
+                // drawing alone, byte for byte.
+                match policy.ChartTable with
+                | ChartTablePolicy.Off -> loweredChart drawing
+                | ChartTablePolicy.Offer ->
+                    match table titled rows with
+                    | None -> loweredChart drawing
+                    | Some model ->
+                        let disclosureId = Accessibility.chartTableId pc.NodeId
+
+                        Plan.classChildren
+                            "div"
+                            "fuaran-chart-table-host"
+                            [ loweredChart (DrawingSvg.withDetails disclosureId drawing)
+                              ChartTablePlan.plan pc.Sources disclosureId model ]
             | BindingResolver.Resolved rows -> chartPlaceholder pc.Sources spec (Seq.length rows)
             | _ -> chartPlaceholder pc.Sources spec 0
 

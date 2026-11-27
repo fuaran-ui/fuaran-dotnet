@@ -7813,18 +7813,21 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, and Phase 2775 retires one public function (DRAFT — untagged)
+## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, Phase 2775 retires one public function, and Phase 2776 adds a third field and a parameter to one function (DRAFT — untagged)
 
 **Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
 additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
 0.108.0 is already one minor ahead of the last tag, so the number does not move.
 
-- **What breaks.** `RenderPolicy` gains the fields `DerivationTrace` (Phase 2749) and `RefreshMarking`
-  (Phase 2751), so code that builds a `RenderPolicy` as a full record literal stops compiling (`FS0764`).
-  `ElementPlan.VisPlan.gridPlaceholder` leaves the public surface (Phase 2775), so code that called it stops
-  compiling.
-- **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles and
-  behaves as before. Both new fields are `Off` by default, and with them off every render is byte-identical.
+- **What breaks.** `RenderPolicy` gains the fields `DerivationTrace` (Phase 2749), `RefreshMarking`
+  (Phase 2751) and `ChartTable` (Phase 2776), so code that builds a `RenderPolicy` as a full record literal stops
+  compiling (`FS0764`). `ElementPlan.VisPlan.gridPlaceholder` leaves the public surface (Phase 2775), so code that
+  called it stops compiling. `ElementPlan.VisPlan.chart` takes the render policy and a table callback (Phase 2776),
+  so a call written against its old arity stops compiling.
+- **What does not.** Anything that starts from `RenderPolicy.defaults` and changes fields with `with` compiles. The
+  first two new fields are `Off` by default, and with them off every render is byte-identical. `ChartTable` is
+  `Offer` by default, so a lowered chart's HTML gains its data table; with it `Off` every render is byte-identical
+  to one before the field.
 - **Phase 2753's own change is additive.** It adds one certified fragment and its types to `Fuaran.UI.Fragments`,
   and no existing member moves.
 
@@ -8155,6 +8158,64 @@ family beside the others.
 its expected text, and every expected text decodes and re-encodes byte for byte. The family reaches an open schema,
 a refused evaluation, a bounded table, a trace without tables, an `Expr` and a pruned step, and the decoder's
 refusals each name their member.
+
+### Phase 2776 — a chart carries a data-table alternative (breaking, for `RenderPolicy` and one function)
+
+**Class: breaking, for one record and one function; the rest is additive.** `RenderPolicy` gains the field
+`ChartTable`, so code that builds a `RenderPolicy` as a full record literal stops compiling (`FS0764`), as with
+Phases 2749 and 2751; every construction site in this repository starts from `RenderPolicy.defaults` with `with`.
+`ElementPlan.VisPlan.chart` gains two parameters. Packages `Fuaran.UI.Renderer.Core`, `Fuaran.UI.Charts`,
+`Fuaran.UI.Renderer` and `Fuaran.UI.Renderer.Server`. No kind, variant or wire member is added and no existing
+fixture byte moves: the corpus gains the `chart-lowering/table-model/` subfamily and a section of
+`a11y-contract.json`. **Unlike the two policy fields before it, this one is ON by default**, so the HTML of every
+lowered chart whose rows resolve gains its table: a host that pins a chart's markup sees it move, and a host that
+supplies its own alternative sets the field `Off`.
+
+- **`Accessibility.ChartTable`** (`Fuaran.UI.Renderer.Core`), a new record: a chart's data-table model, with
+  `Caption` (a `TextSource`, the chart's title carried unresolved or one minted from its kind), `Columns`, `Rows`
+  (each cell its text) and `RowCount`. **`Accessibility.chartTableId nodeId`** is the id of the disclosure that holds
+  it, `<nodeId>-data-table`.
+- **`Charts.tableModel spec rows`** and **`Charts.tableModelWith limits spec rows`** (`Fuaran.UI.Charts`), new: the
+  values a chart's marks are drawn from, through the same cost-cap admission the drawing passes, or `None` when the
+  caps refuse the chart or it has no rows. One column per plotted field in its declared name (the x field, each
+  series, then the interval's ends, the size and the path order where the kind reads them; a heatmap's x, row and
+  value fields); one row per plotted row in drawing order; each value through the declared `ValueFormat` at its own
+  precision (the hover tip's text), "withheld" for a withheld value and an empty cell for a missing one. At most
+  **`Charts.tableRowLimit`** rows (the bound grid's 1,000), with `RowCount` the whole count. The rules are
+  `docs/CHART-LOWERING-TEXT-CONTRACT.md` clauses 8-10. `tryLowerWithStyle` now reads the caps through the same
+  private admission; its results are unchanged, byte for byte.
+- **`ElementPlan.ChartTablePlan`** (`Fuaran.UI.Renderer.Core`), new: the disclosure both renderers emit, a native
+  `<details class="fuaran-chart-table">` whose `<summary>` reads "View as table" (`toggleText`), holding a
+  `<table class="fuaran-chart-table-grid">` with a `<caption>`, one `<th scope="col">` per column and each row's x
+  value as its `<th scope="row">`, and under a cut table "Rows 1–1000 of n" (`limitText`).
+- **`ElementPlan.VisPlan.chart pc policy state spec lowered svg table`**: the policy and the table callback are new.
+  Under `ChartTable = Offer`, a lowered chart whose callback yields a table renders inside a
+  `fuaran-chart-table-host` element, its drawing followed by the disclosure. Both renderers pass
+  `Charts.tableModel`, so the client and the server emit the same markup and the server's needs no script.
+- **`DrawingSvg.withDetails detailsId svg`**, new: the drawing with `aria-details` naming the disclosure on its
+  `role="img"` root. Nothing else in the markup moves.
+- **`RenderPolicy.ChartTable`**, a field of the new `ChartTablePolicy` (`Offer` | `Off`). `RenderPolicy.defaults` is
+  `Offer`.
+- **The reference stylesheet** styles the disclosure, its toggle's focus ring, the table and the row-limit line.
+  The four tier copies are regenerated.
+- **The corpus.** `chart-lowering/table-model/` holds 25 byte copies of existing chart-lowering inputs, each beside
+  its `<name>.table.json` golden, two of them `null` (a refused chart). `a11y-contract.json` gains a `chartTable`
+  section: eight structural rules scoped to the disclosure, so they hold vacuously on a host that does not offer it.
+  The other hosts' lowerings and renderers follow in Phase 2804.
+
+**What a consumer must do.** Nothing, unless it builds a `RenderPolicy` as a full record literal, calls
+`ElementPlan.VisPlan.chart` itself, or pins a lowered chart's HTML. **Migration:** start from
+`RenderPolicy.defaults`; pass the policy and `Charts.tableModel` (or a function answering `None`) to
+`VisPlan.chart`; and either re-pin the chart's markup with its table or set `ChartTable = ChartTablePolicy.Off`,
+which renders the pre-phase bytes.
+
+**Certified by** `src/Fuaran.UI.Tests/ChartTableTests.fs` and
+`src/Fuaran.UI.Renderer.Server.Tests/ChartTableSsrTests.fs`. Every `table-model` input is a byte copy of the input it
+names and yields its golden byte for byte; every per-datum mark's readout is the table's cell for that row and
+series; a refused chart and a chart with no rows offer no table. With the policy off the server renders ten charts
+to the SHA-256 digests taken from the pre-phase renderer. On by default, the served table holds the model cell for
+cell, the drawing's `aria-details` names the disclosure, the page holds no script, untrusted text is escaped, and
+every rule of the contract's `chartTable` section passes, with a check on this tier for each rule it names.
 
 ---
 

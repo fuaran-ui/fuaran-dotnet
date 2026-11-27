@@ -471,10 +471,12 @@ and private renderKind
     | NodeKind.Chart spec ->
         // Phase 526 / 643 — the lowered kinds draw the shared Drawing SVG through
         // `Charts`, under the provenance scope this context declares (Phase 2068);
-        // the client's arm makes the same call through its lowering memo.
+        // the client's arm makes the same call through its lowering memo. Phase
+        // 2776 — with the data table the policy offers, which needs no script.
         Emit.plan (
             ElementPlan.VisPlan.chart
                 (planContext walk ctx parentNodeId)
+                ctx.Policy
                 state
                 spec
                 (Fuaran.UI.Charts.isLowered spec.Kind)
@@ -482,6 +484,7 @@ and private renderKind
                     (Fuaran.UI.Charts.provenanceInForce ctx.ChartProvenance)
                     ctx.Sources
                     (renderText ctx))
+                Fuaran.UI.Charts.tableModel
         )
     | NodeKind.Map spec -> Emit.plan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
     | NodeKind.ErrorBoundary spec ->

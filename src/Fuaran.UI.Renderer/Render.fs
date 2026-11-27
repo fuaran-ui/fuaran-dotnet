@@ -5647,10 +5647,13 @@ and private renderChart
                 | _ -> [])
             (ElementPlan.VisPlan.chart
                 (planContext ctx parentNodeId)
+                ctx.Policy
                 (Some state)
                 spec
                 (Fuaran.UI.Charts.isLowered spec.Kind)
-                svg)
+                svg
+                // Phase 2776 — the data table, under the context's policy.
+                Fuaran.UI.Charts.tableModel)
 
 /// Hand a CSV document to the reader (Phase 1125).
 ///

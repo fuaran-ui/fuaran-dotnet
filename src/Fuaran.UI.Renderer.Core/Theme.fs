@@ -175,7 +175,12 @@ let vocabularyFingerprintMarker = "fuaran-vocabulary-fingerprint:"
 // its live region `fuaran-refresh-status`, the moved value `fuaran-refresh-moved`
 // and the marked cell `fuaran-refresh-changed` — with the reference rules that
 // outline them, fade them once and stop the fade under reduced motion.
-let vocabularyFingerprint = "fv1:1dadf78ecced9225"
+// Phase 2776 moved it: a chart's data table entered, ON by default — the host
+// `fuaran-chart-table-host`, the disclosure `fuaran-chart-table`, its toggle
+// `fuaran-chart-table-toggle`, the table `fuaran-chart-table-grid` and the
+// row-limit line `fuaran-chart-table-limit` — with the reference rules that lay
+// them out and ring the toggle's focus.
+let vocabularyFingerprint = "fv1:c7b283b93867bf80"
 
 /// parity: format a float invariantly across both pipelines. The .NET branch
 /// pins InvariantCulture so a comma-decimal locale can't corrupt the CSS/JSON;

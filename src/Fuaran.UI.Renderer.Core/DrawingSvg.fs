@@ -610,6 +610,10 @@ let private metadataOpen =
 [<Literal>]
 let private metadataClose = "</metadata>"
 
+/// The opening of every drawing root this module emits, up to the first
+/// attribute that varies. `withDetails` extends exactly this prefix.
+let private rootOpen = "<svg class=\"fuaran-drawing\" role=\"img\""
+
 /// The full canonical inline-SVG string for a `Drawing`, emitted under an
 /// explicit character ceiling (Phase 790), optionally carrying an embedded
 /// canonical-JSON provenance document (Phase 643). `role="img"` + optional
@@ -632,7 +636,8 @@ let tryRenderWithMetadataAndLimit
     : Result<string, DrawingRenderError> =
     let e = Emitter(limit)
 
-    e.Add "<svg class=\"fuaran-drawing\" role=\"img\" viewBox=\""
+    e.Add rootOpen
+    e.Add " viewBox=\""
     e.Add(viewBoxAttr spec.ViewBox)
     e.Add "\""
     e.Add(rootAriaLabel textOf spec.Title spec.Description)
@@ -768,3 +773,24 @@ let tryRecoverMetadata (svg: string) : string option =
             None
         else
             Some(unescape (svg.Substring(bodyStart, bodyEnd - bodyStart)))
+
+/// Phase 2776 — the drawing `svg` (this module's own output) with
+/// `aria-details="<detailsId>"` on its root, naming the element that holds the
+/// drawing's extended description: a chart's data-table alternative. The
+/// attribute follows `role="img"`, ahead of everything the emitter writes after
+/// it, so the rest of the markup is byte-identical. Markup this module did not
+/// emit is returned unchanged.
+///
+/// `aria-details`, not `aria-describedby`: the description a `role="img"` root
+/// announces is the `aria-label` composed above, and a table is a structure to
+/// navigate rather than a sentence to read out, which is what `aria-details`
+/// names.
+let withDetails (detailsId: string) (svg: string) : string =
+    if svg.StartsWith(rootOpen, System.StringComparison.Ordinal) then
+        rootOpen
+        + " aria-details=\""
+        + escape detailsId
+        + "\""
+        + svg.Substring rootOpen.Length
+    else
+        svg

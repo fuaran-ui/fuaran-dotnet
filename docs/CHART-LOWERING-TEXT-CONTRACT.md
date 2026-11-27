@@ -89,6 +89,61 @@ subfamily pins a non-default palette for a host that ships an install seam. Its 
 palette as a harness-only `palette` selector, which is a style choice like `axisUnitMode` and
 never part of the wire. The decision and its reasons are D23 in `DECISIONS.md`.
 
+## The data table beside the drawing (Phase 2776)
+
+A lowered chart is an image to assistive technology: `role="img"` with a title and a summary of at
+most 320 characters (clause 6, Phases 921 and 1494). The summary is not the data. So the lowering
+yields, beside the drawing, a **table model** of the values its marks were drawn from, and the
+renderers offer it as a real table behind a "View as table" disclosure that the drawing names in
+`aria-details`. It is a lowering rule like the clauses above: a pure function of the spec and the
+rows, run on every host, and pinned by the `chart-lowering/table-model/` subfamily.
+
+**8. The caption is a text slot, and clause 1 applies.** It is the chart's `Title`, carried
+unresolved, so a `Bound` or `I18n` title resolves at render time exactly as the drawing's `<title>`
+does. A chart with no title gets a `Literal` the lowering mints from its kind: "Bar chart data",
+"Stacked area chart data", "Heatmap chart data". Clause 5's posture: the fallback answers
+absence, never an unresolved title.
+
+**9. The table holds what the marks read, and nothing else.**
+
+- **Columns** are the fields the marks read, each under its declared name: the x field, then each
+  series in order (the derived series of §3.6.29 when `yFields` is empty), then, when the kind
+  reads them, the interval's low and high ends, the size and the path order (Phase 2654). A
+  heatmap's columns are its x field, its row field and its value field. A field that orders the
+  rows (`sortBy`) or withholds them (`withheldField`) is not plotted, so it is not a column: its
+  effect is the row order and the "withheld" cells.
+- **Rows** are the rows the chart plotted, one per row, in the order the marks were drawn, so after
+  `sortBy`. A heatmap's rows are one per cell: the first row of each (x, row) pair, in data order,
+  which is the row the cell draws.
+- **Cells.** A value is its exact readout through the chart's declared `valueFormat`: unscaled by
+  any display unit, the currency symbol kept, at the fewest decimals that read it exactly unless
+  the format declares them. That is the hover tip's text (Phase 883), not the tick's: a tick
+  answers "roughly where", a table cell "what exactly". The x cell is the category axis's own
+  projection of the row (an ISO date on a temporal axis); a size or a path order is a plain
+  number; an interval's ends are the pair as drawn, normalised low to high. A withheld value
+  reads "withheld" and a missing one is an empty cell, never a zero. The path order is a
+  position, so a withheld row keeps it.
+- **The cost caps apply** through the same admission the drawing passes (Phase 790). A chart the
+  caps refuse is drawn as the refusal and offers no table; a chart with no rows has no values to
+  read and offers none. A table holds at most 1,000 rows, the bound grid's limit, so the two tables
+  a reader meets are cut at the same place; `rowCount` says how many rows there were, and the
+  renderer states "Rows 1–1000 of n" under a cut table.
+
+**The golden's form.** Each case in `chart-lowering/table-model/` is a byte copy of an existing
+chart-lowering input (`<name>.input.json`) beside a sidecar `<name>.table.json`: the table model in
+canonical JSON — `{"caption":<TextSource>,"columns":[…],"rowCount":n,"rows":[[…],…]}`, the caption
+in the `TextSource` canonical wire form (a bare string for a `Literal`), every cell a string — or
+`null` where the caps refuse the chart. The existing top-level `*.expected.json` goldens are not
+touched: the hosts that read the top-level family compare those bytes and do not read a
+subdirectory, and Phase 2804 adds their readers.
+
+**10. Whether the table is offered is host policy, never wire.** `RenderPolicy.ChartTable` is
+`Offer` by default; a host that supplies its own alternative sets it `Off`, and every render is then
+byte-identical to one before the table existed. The markup the F# renderers emit, the rules it must
+pass (`a11y-contract.json`'s `chartTable` section) and the reasons for each choice — a native
+`<details>`, `aria-details` on the drawing naming the disclosure rather than the table inside it —
+are in `ElementPlan.ChartTablePlan`.
+
 ## Why this rather than the alternatives
 
 **Resolving at the bridge** was the shape two hosts had reached for, and it fails on clause 3: what

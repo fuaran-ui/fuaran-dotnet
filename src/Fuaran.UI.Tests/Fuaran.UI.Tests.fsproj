@@ -357,6 +357,7 @@
     <Compile Include="WireSurvivabilityTests.fs" />
     <Compile Include="UnreferencedSurfaceTests.fs" />
     <Compile Include="ChartLoweringTests.fs" />
+    <Compile Include="ChartTableTests.fs" />
     <!-- Phase 1098 — the `Sparkline → Drawing` lowering: the cross-host goldens,
          the byte-compatibility proof against the retired renderer formula, and
          the emitted-markup assertions. -->

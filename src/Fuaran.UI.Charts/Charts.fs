@@ -1245,6 +1245,13 @@ let private formatValue (fmt: Format option) (divisor: float) (dropSymbol: bool)
             sym + body
     | _ -> body
 
+/// A value at its own precision through the declared format: unscaled by any
+/// display unit, the currency symbol kept, and the fewest decimals that read the
+/// value exactly unless the format declares them. The readout of a hover tip
+/// (Phase 883) and of a data-table cell (Phase 2776): both answer "what exactly
+/// is this", where a tick answers "roughly where".
+let private exactValueText (fmt: Format option) (v: float) : string = formatValue fmt 1.0 false v v
+
 // ─── Display units (Phase 876) ───────────────────────────────────────────────
 //
 // The operator's prefix table, transcribed: thresholds sit at 1 + 3k and the
@@ -2713,7 +2720,7 @@ let private valueAxis<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (data: S
     // Everything else is the shared formatter (`formatValue`), so thousands
     // grouping, the round-half-up rule, the `%` suffix and the sign placement
     // are one implementation across ticks, labels and tips.
-    let tipValueText (v: float) : string = formatValue valueFormat 1.0 false v v
+    let tipValueText (v: float) : string = exactValueText valueFormat v
 
     /// The readout for a PER-DATUM mark (a bar, a stack segment, a wedge, a
     /// scatter point): "Series · Category · value". Both leading parts are
@@ -6267,18 +6274,23 @@ let refusalDrawingWithStyle<'Msg> (style: ChartStyle) (spec: ChartSpec<'Msg>) (r
 let refusalDrawing<'Msg> (spec: ChartSpec<'Msg>) (refusal: ChartRefusal) : DrawingSpec =
     refusalDrawingWithStyle ChartStyle.defaults spec refusal
 
-/// Lower under explicit cost caps AND an explicit style (Phase 885), refusing
-/// rather than doing unbounded work (Phase 790). The two parameters compose:
-/// `ChartLimits` bounds the WORK, `ChartStyle` chooses the APPEARANCE, and
-/// neither is a `ChartSpec` wire field. The row source is read at most
+/// What the cost caps admitted (Phase 790): the spec with its series resolved
+/// and the rows read, or a heatmap's rows with the cell grid its cap was
+/// measured on. The drawing and the data table (Phase 2776) are both built from
+/// it, so a chart the caps refuse offers neither.
+[<RequireQualifiedAccess>]
+type private Admitted<'Msg> =
+    | Series of ChartSpec<'Msg> * Row list
+    | Heatmap of ChartSpec<'Msg> * Row list * HeatmapGrid
+
+/// Apply the cost caps. The row source is read at most
 /// `MaxPointsPerSeries + 1` deep, so an over-budget — or unbounded — sequence is
 /// never materialised.
-let tryLowerWithStyle<'Msg>
+let private admit<'Msg>
     (limits: ChartLimits)
-    (style: ChartStyle)
     (spec: ChartSpec<'Msg>)
     (rows: Row seq)
-    : Result<DrawingSpec, ChartRefusal> =
+    : Result<Admitted<'Msg>, ChartRefusal> =
     let capRows () =
         let capped =
             if limits.MaxPointsPerSeries = System.Int32.MaxValue then
@@ -6316,7 +6328,7 @@ let tryLowerWithStyle<'Msg>
             if cells > limits.MaxPointsPerSeries then
                 Error(TooManyPoints(cells, limits.MaxPointsPerSeries))
             else
-                Ok(lowerHeatmap style spec grid))
+                Ok(Admitted.Heatmap(spec, capped, grid)))
     // Phase 2568 — derived series are counted only once the rows are read, so the
     // point cap is applied first; a table with more numeric columns than
     // `MaxSeries` is the same typed refusal an authored list that long is, never a
@@ -6325,11 +6337,29 @@ let tryLowerWithStyle<'Msg>
         capRows ()
         |> Result.bind (fun capped ->
             capSeries (derivedSeriesFields spec.XField capped)
-            |> Result.map (fun fields -> lowerRows style { spec with YFields = fields } capped))
+            |> Result.map (fun fields -> Admitted.Series({ spec with YFields = fields }, capped)))
     | _, authored ->
         capSeries authored
         |> Result.bind (fun _ -> capRows ())
-        |> Result.map (lowerRows style spec)
+        |> Result.map (fun capped -> Admitted.Series(spec, capped))
+
+/// Lower under explicit cost caps AND an explicit style (Phase 885), refusing
+/// rather than doing unbounded work (Phase 790). The two parameters compose:
+/// `ChartLimits` bounds the WORK, `ChartStyle` chooses the APPEARANCE, and
+/// neither is a `ChartSpec` wire field. The row source is read at most
+/// `MaxPointsPerSeries + 1` deep, so an over-budget — or unbounded — sequence is
+/// never materialised.
+let tryLowerWithStyle<'Msg>
+    (limits: ChartLimits)
+    (style: ChartStyle)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : Result<DrawingSpec, ChartRefusal> =
+    admit limits spec rows
+    |> Result.map (fun admitted ->
+        match admitted with
+        | Admitted.Heatmap(spec, _, grid) -> lowerHeatmap style spec grid
+        | Admitted.Series(spec, rows) -> lowerRows style spec rows)
 
 /// Lower under explicit cost caps and the shipped default style, refusing rather
 /// than doing unbounded work (Phase 790).
@@ -6368,6 +6398,146 @@ let lowerWith<'Msg> (limits: ChartLimits) (spec: ChartSpec<'Msg>) (rows: Row seq
 /// typed form for a caller that wants to handle the refusal itself.
 let lower<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : DrawingSpec =
     lowerWith ChartLimits.defaults spec rows
+
+// ═══ The data-table alternative (Phase 2776) ════════════════════════════════
+//
+//  A lowered chart is an image to assistive technology: `role="img"` with a
+//  title and a summary of at most 320 characters (Phases 921, 1494). The
+//  summary is not the data. This is the data: beside the drawing, the lowering
+//  yields the values its marks were drawn from as a table, and the renderers
+//  offer it behind a "View as table" disclosure the drawing names in
+//  `aria-details` (`ElementPlan.ChartTablePlan`).
+//
+//  WHAT A TABLE HOLDS, and it is a lowering rule like every other here, so
+//  `chart-lowering/table-model/` pins it for every host:
+//
+//   * THE CAPTION is the chart's `Title`, carried unresolved (the text
+//     contract's clause 1); a chart with no title gets a `Literal` minted from
+//     its kind, "Bar chart data".
+//   * THE COLUMNS are the fields the marks read, under their declared names:
+//     the x field, then each series in order, then the interval's low and high
+//     ends, the size and the path order when the kind reads them (the channels
+//     of Phase 2654). A heatmap's are its x field, its row field and its value
+//     field. A field that orders rows (`SortBy`) or withholds them is not
+//     plotted, so it is not a column: its effect is the row order and the
+//     "withheld" cells.
+//   * THE ROWS are the rows the chart plotted, in the order the marks were
+//     drawn (after `SortBy`), one per row; a heatmap's are one per cell, the
+//     first row of an (x, row) pair, in data order, which is the pair the cell
+//     draws.
+//   * A CELL is the value's exact readout through the chart's declared
+//     `ValueFormat` (`exactValueText`, the hover tip's text), the x cell as the
+//     category axis projected it, a size or a path order as a plain number, a
+//     withheld value as "withheld" and a missing one as an empty cell. Never a
+//     zero for a value that is not there.
+//   * THE COST CAPS APPLY, through the same admission the drawing passes: a
+//     chart the caps refuse offers no table, nor does a chart with no rows,
+//     which has no values to read; and a table longer than
+//     `tableRowLimit` holds its first `tableRowLimit` rows and says how many
+//     there were (`RowCount`).
+
+/// The most rows a chart's data table holds: the bound grid's limit
+/// (`ElementPlan.VisPlan.BoundGridRowLimit`), so the two tables a reader meets
+/// are cut at the same place.
+let tableRowLimit = ElementPlan.VisPlan.BoundGridRowLimit
+
+/// The caption a table carries: the chart's title, or one minted from its kind.
+let private tableCaption<'Msg> (spec: ChartSpec<'Msg>) (stacked: bool) : TextSource =
+    spec.Title
+    |> Option.defaultWith (fun () -> TextSource.Literal(summaryKindWords spec.Kind stacked + " data"))
+
+/// A value cell: "withheld", the exact readout, or empty when missing.
+let private tableCell (fmt: Format option) (withheld: bool) (value: float option) : string =
+    if withheld then
+        withheldWord
+    else
+        match value with
+        | Some v -> exactValueText fmt v
+        | None -> ""
+
+/// The table of a series chart (every kind but `Heatmap`), over the rows the
+/// caps admitted.
+let private seriesTable<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) : Accessibility.ChartTable =
+    let rows = sortedRows spec rows
+    let data = seriesData spec rows
+    let fmt = spec.ValueFormat
+    let withheld (i: int) = data.Withheld.[i]
+
+    let series =
+        [ for j in 0 .. data.M - 1 -> data.YFields.[j], (fun i -> tableCell fmt (withheld i) data.Series.[j].[i]) ]
+
+    let interval =
+        match spec.Interval with
+        | Some iv when intervalApplies spec ->
+            [ iv.Low, (fun i -> tableCell fmt (withheld i) (data.Intervals.[i] |> Option.map fst))
+              iv.High, (fun i -> tableCell fmt (withheld i) (data.Intervals.[i] |> Option.map snd)) ]
+        | _ -> []
+
+    let size =
+        match scatterChannel spec spec.SizeField with
+        | Some f -> [ f, (fun i -> tableCell None (withheld i) data.Sizes.[i]) ]
+        | None -> []
+
+    // The path order is a position, read off a withheld row too (`seriesData`).
+    let path =
+        match scatterChannel spec spec.PathField with
+        | Some f -> [ f, (fun i -> tableCell None false data.PathKeys.[i]) ]
+        | None -> []
+
+    let columns =
+        ((spec.XField, (fun i -> data.Categories.[i])) :: series)
+        @ interval
+        @ size
+        @ path
+
+    let shown = min data.N tableRowLimit
+
+    { Caption = tableCaption spec data.Stacked
+      Columns = columns |> List.map fst
+      Rows = [ for i in 0 .. shown - 1 -> columns |> List.map (fun (_, cell) -> cell i) ]
+      RowCount = data.N }
+
+/// The table of a heatmap: one row per drawn cell, in data order.
+let private heatmapTable<'Msg> (spec: ChartSpec<'Msg>) (rows: Row list) (grid: HeatmapGrid) : Accessibility.ChartTable =
+    let xIndex = grid.XKeys |> Array.mapi (fun i k -> k, i) |> Map.ofArray
+    let rowIndex = grid.RowKeys |> Array.mapi (fun j k -> k, j) |> Map.ofArray
+
+    let cells =
+        rows
+        |> List.map (fun r ->
+            BindingResolver.projectRowFieldString r spec.XField, BindingResolver.projectRowFieldString r grid.RowField)
+        |> List.distinct
+        |> List.map (fun (x, y) ->
+            let at = xIndex.[x], rowIndex.[y]
+
+            [ x
+              y
+              tableCell spec.ValueFormat (grid.Withheld.Contains at) (grid.Cells.TryFind at) ])
+
+    { Caption = tableCaption spec false
+      Columns = [ spec.XField; grid.RowField; grid.ValueField ]
+      Rows = List.truncate tableRowLimit cells
+      RowCount = List.length cells }
+
+/// The data-table alternative of a chart under explicit cost caps: the values
+/// its marks are drawn from, or `None` when there are none to read, because the
+/// caps refuse the chart (it is drawn as the refusal) or it has no rows.
+let tableModelWith<'Msg>
+    (limits: ChartLimits)
+    (spec: ChartSpec<'Msg>)
+    (rows: Row seq)
+    : Accessibility.ChartTable option =
+    match admit limits spec rows with
+    | Error _
+    | Ok(Admitted.Series(_, []))
+    | Ok(Admitted.Heatmap(_, [], _)) -> None
+    | Ok(Admitted.Series(spec, rows)) -> Some(seriesTable spec rows)
+    | Ok(Admitted.Heatmap(spec, rows, grid)) -> Some(heatmapTable spec rows grid)
+
+/// The data-table alternative under the shipped default caps, the ones `lower`
+/// draws under.
+let tableModel<'Msg> (spec: ChartSpec<'Msg>) (rows: Row seq) : Accessibility.ChartTable option =
+    tableModelWith ChartLimits.defaults spec rows
 
 // ═══ Sparkline → Drawing lowering (Phase 1098) ═══════════════════════════════
 //

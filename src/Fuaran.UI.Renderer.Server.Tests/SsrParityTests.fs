@@ -1350,8 +1350,12 @@ let ssrParityTests =
                       (contains "<metadata data-fuaran-provenance=\"v1\">" shared)
                       "the shared emitter stamps the drawing when the scope is installed"
 
+                  // Phase 2776 — with the data table on (the default), the drawing
+                  // names its table's disclosure in `aria-details`, on both tiers
+                  // (`ElementPlan.VisPlan.chart`); every other byte is the shared
+                  // emitter's.
                   Expect.isTrue
-                      (contains shared onHtml)
+                      (contains (DrawingSvg.withDetails (Accessibility.chartTableId "ch-prov") shared) onHtml)
                       "server HTML embeds the shared self-describing SVG payload byte-for-byte"
 
                   Expect.isFalse

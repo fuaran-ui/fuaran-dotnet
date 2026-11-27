@@ -389,3 +389,34 @@ let withTooltipDescribedBy (hintId: string) (attrs: (string * string) list) : (s
 /// node id so both renderers, and any host reading the emitted markup, compute
 /// the same string without carrying a second identifier on the wire.
 let tooltipHintId (nodeId: string) : string = nodeId + "-tooltip"
+
+/// Phase 2776 — the data-table alternative a lowered chart offers beside its
+/// drawing: the values the marks were drawn from, as a table a reader who cannot
+/// see the marks can read in place. Yielded by the chart lowering
+/// (`Charts.tableModel`), planned by `ElementPlan.ChartTablePlan` so both
+/// renderers emit the same markup, and offered under `RenderPolicy.ChartTable`.
+/// Host chrome, never wire: a document says nothing about it.
+type ChartTable =
+    {
+        /// The table's caption: the chart's `Title`, carried unresolved like
+        /// every chart text slot, or a `Literal` the lowering mints from the
+        /// chart's kind when the chart has no title.
+        Caption: TextSource
+        /// One header per plotted field, in the field's declared name: the x
+        /// field first, then each series, then each channel a mark read.
+        Columns: string list
+        /// One row per plotted row, in the order the marks were drawn, each
+        /// cell the text the column's values read as. At most the table's row
+        /// limit; `RowCount` says how many there were.
+        Rows: string list list
+        /// How many rows the chart plotted, which is more than `Rows` holds
+        /// when the table was cut at its row limit.
+        RowCount: int
+    }
+
+/// The DOM id of the disclosure holding a chart's data table, which the chart's
+/// drawing names in `aria-details`. The disclosure rather than the table inside
+/// it, because a closed `<details>` keeps its content out of the accessibility
+/// tree: the reference must reach the control that opens it. Derived from the
+/// node id, as the tooltip's hint id is.
+let chartTableId (nodeId: string) : string = nodeId + "-data-table"

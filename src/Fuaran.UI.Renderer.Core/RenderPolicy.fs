@@ -45,6 +45,19 @@ type RefreshMarkingPolicy =
     /// declined or full one marks nothing.
     | Mark
 
+/// Whether a lowered chart offers its data-table alternative (Phase 2776). Host
+/// chrome, never wire. Unlike the two settings above it is ON by default: the
+/// table is the route to a chart's values for a reader who cannot see the
+/// marks, and a host that supplies its own alternative turns it `Off`, which
+/// renders byte-identically to a render without the setting.
+[<RequireQualifiedAccess>]
+type ChartTablePolicy =
+    /// Every lowered chart whose rows resolved offers a "View as table"
+    /// disclosure holding the values its marks were drawn from. The default.
+    | Offer
+    /// No table.
+    | Off
+
 /// What a render may do, as opposed to what it shows. Held by both renderers'
 /// contexts as `Policy`; `RenderPolicy.defaults` is the posture every builder
 /// starts from.
@@ -70,6 +83,9 @@ type RenderPolicy =
         /// Whether a live refresh marks the cells and values it changed
         /// (Phase 2751); `Off` emits nothing.
         RefreshMarking: RefreshMarkingPolicy
+        /// Whether a lowered chart offers its data-table alternative
+        /// (Phase 2776); `Off` emits nothing.
+        ChartTable: ChartTablePolicy
     }
 
 /// Builders over `RenderPolicy`.
@@ -78,13 +94,14 @@ module RenderPolicy =
 
     /// The posture every builder starts from: default-deny egress
     /// (`Sanitize.denyNonLocalEgress`), the process hash floor, `Permissive`
-    /// CSP, the root scope, no derivation affordance and no refresh marking. Every
-    /// wider or stricter posture is reached by name with `with`, so a grep finds
-    /// each host that chose one.
+    /// CSP, the root scope, no derivation affordance, no refresh marking, and a
+    /// chart's data table offered. Every wider or stricter posture is reached by
+    /// name with `with`, so a grep finds each host that chose one.
     let defaults: RenderPolicy =
         { Egress = Sanitize.denyNonLocalEgress
           CustomHashFloor = None
           Csp = Csp.Permissive
           Scope = None
           DerivationTrace = DerivationTracePolicy.Off
-          RefreshMarking = RefreshMarkingPolicy.Off }
+          RefreshMarking = RefreshMarkingPolicy.Off
+          ChartTable = ChartTablePolicy.Offer }
