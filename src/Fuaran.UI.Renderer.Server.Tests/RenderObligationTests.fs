@@ -1068,24 +1068,43 @@ let private referenceStylesheetRules () : (string * string) list =
         |> Seq.map (fun m -> collapse m.Groups[1].Value, collapse m.Groups[2].Value)
         |> List.ofSeq
 
-/// Rule 5's ALIGNMENT half, read from the stylesheet because alignment is layout and
-/// emitted markup cannot show it. `dir` decides which edge `start` and `end` name, so a
-/// node declaring `ltr` inside right-to-left prose start-aligns to the LEFT while its
-/// undeclared neighbours align right - the defect this pins (Phase 2867). It measures
-/// three things, each the reason a declared node's text, or a descendant's, would move:
+/// The kinds with a LABEL AND A VALUE, each with the element that carries its value's
+/// run: the wrapper of such a kind takes its context's direction back and the declared
+/// direction lands on this element (D43). A new label-and-value kind is added here and
+/// beside them in the stylesheet.
+let private labelValueRuns =
+    [ "fuaran-kind-fact", sprintf ".%s > :not(.%s)" Css.Class.FactValue Css.Class.FactIcon
+      "fuaran-kind-label-value-row", "." + Css.Class.LabelValueRowValue
+      "fuaran-kind-metric", "." + Css.Class.MetricValue ]
+
+/// Rule 5's ALIGNMENT and LAYOUT halves, read from the stylesheet because both are
+/// layout and emitted markup cannot show them. `dir` decides which edge `start` and
+/// `end` name and which way a flex row or a table runs, so a node declaring `ltr`
+/// inside right-to-left prose start-aligns to the LEFT, and a Fact packs its value to
+/// the left, while its undeclared neighbours run right - the defect this pins (Phase
+/// 2867). The structure it checks was measured in a real Chromium against undeclared
+/// twins; this test checks that the structure is there. It checks five things, each
+/// the reason a declared node's text, a descendant's, or a tile's parts would move:
 ///
 ///   * the declared node takes its alignment from its PARENT's direction
-///     (`text-align: match-parent`, with the `-webkit-` spelling Chromium and WebKit
-///     parse), so it and every descendant inheriting from it align as they would undeclared;
+///     (`text-align: match-parent`, with the `-webkit-` spelling Chromium parses), so
+///     it and every descendant inheriting from it align with the context;
+///   * a descendant carrying a `dir` of its own (a bound leaf's `auto`) resolves
+///     `start` against that direction, as it does undeclared, rather than inheriting
+///     the physical edge;
 ///   * the outermost declared node records the surrounding direction's physical edges,
-///     for both directions;
-///   * no rule anywhere sets a bare logical `text-align: start` or `end`, which would
-///     resolve against the DECLARED direction inside a declared subtree: each resolves
-///     through the recorded context edge, and falls back to the logical value outside one.
+///     for both directions, and no rule anywhere sets a bare logical `text-align:
+///     start` or `end`, which would resolve against the DECLARED direction inside a
+///     declared subtree;
+///   * on each label-and-value kind the wrapper takes the context's direction back,
+///     for both contexts;
+///   * ...and that kind's value run carries the declared direction and the isolation,
+///     for both declared directions.
 ///
-/// It does not measure flex or grid placement inside a declared node. That is the
-/// layout half, which no stylesheet rule can take back from a wrapper that carries `dir`
-/// (D43): it is answered by where the declaration lands, not here.
+/// What it cannot see, and D43 records: a declared BOUND leaf aligns with its context,
+/// where the undeclared one aligns by its content (`dir="auto"`), because the two emit
+/// identical markup once a direction is declared; and the order rules apply in, which
+/// a rule placed above these could change.
 let private checkDeclaredDirectionKeepsAlignment () =
     let rules = referenceStylesheetRules ()
 
@@ -1093,16 +1112,31 @@ let private checkDeclaredDirectionKeepsAlignment () =
         rules
         |> List.exists (fun (s, body) -> s = selector && body.Contains(declaration, StringComparison.Ordinal))
 
+    let declaredClasses = ":is(.fuaran-dir-ltr, .fuaran-dir-rtl)"
     let declaredRule = ".fuaran-dir-ltr, .fuaran-dir-rtl"
 
-    let contextRule (direction: string) =
-        sprintf
-            ":dir(%s) > :is(.fuaran-dir-ltr, .fuaran-dir-rtl):not(:is(.fuaran-dir-ltr, .fuaran-dir-rtl) *)"
-            direction
+    let ownDirectionRule =
+        ":where(.fuaran-dir-ltr, .fuaran-dir-rtl) :where([dir]:not(.fuaran-dir-ltr, .fuaran-dir-rtl))"
 
+    let contextRule (direction: string) =
+        sprintf ":dir(%s) > %s:not(%s *)" direction declaredClasses declaredClasses
+
+    let kinds = labelValueRuns |> List.map (fst >> sprintf ".%s") |> String.concat ", "
+    let runs = labelValueRuns |> List.map snd |> String.concat ", "
+
+    let wrapperRule (direction: string) =
+        sprintf ":dir(%s) > %s:is(%s)" direction declaredClasses kinds
+
+    let runRule (direction: string) =
+        sprintf ".fuaran-dir-%s :is(%s)" direction runs
+
+    // The own-direction rule is the one `start` that MUST resolve against the element's
+    // own direction, so it is the one the ratchet admits.
     let bareLogical =
         rules
-        |> List.filter (fun (_, body) -> Regex.IsMatch(body, @"(^|;)\s*text-align:\s*(start|end)\s*(;|$)"))
+        |> List.filter (fun (s, body) ->
+            s <> ownDirectionRule
+            && Regex.IsMatch(body, @"(^|;)\s*text-align:\s*(start|end)\s*(;|$)"))
         |> List.map fst
 
     let problems =
@@ -1110,6 +1144,8 @@ let private checkDeclaredDirectionKeepsAlignment () =
               "the declared-direction rule does not take its alignment from the parent (`text-align: -webkit-match-parent`)"
           if not (declares declaredRule "text-align: match-parent;") then
               "the declared-direction rule does not take its alignment from the parent (`text-align: match-parent`)"
+          if not (declares ownDirectionRule "text-align: start;") then
+              "no rule lets a descendant with a `dir` of its own resolve `start` against that direction (`text-align: start`)"
           for direction, startEdge, endEdge in [ "ltr", "left", "right"; "rtl", "right", "left" ] do
               if
                   not (
@@ -1118,6 +1154,23 @@ let private checkDeclaredDirectionKeepsAlignment () =
                   )
               then
                   sprintf "no rule records the %s context's physical edges on the outermost declared node" direction
+
+              if not (declares (wrapperRule direction) (sprintf "direction: %s;" direction)) then
+                  sprintf
+                      "in a %s context, a declared label-and-value wrapper does not take the context's direction back (`%s`)"
+                      direction
+                      (wrapperRule direction)
+
+              if
+                  not (
+                      declares (runRule direction) (sprintf "direction: %s;" direction)
+                      && declares (runRule direction) "unicode-bidi: isolate;"
+                  )
+              then
+                  sprintf
+                      "a label-and-value kind declaring %s does not carry the direction and the isolation on its value's run (`%s`)"
+                      direction
+                      (runRule direction)
           for selector in bareLogical do
               sprintf
                   "`%s` sets a bare logical text-align, which a declared direction re-resolves; write `var(--fuaran-dir-context-start, start)` (or `-end, end`)"
@@ -1125,7 +1178,7 @@ let private checkDeclaredDirectionKeepsAlignment () =
 
     Expect.isEmpty
         problems
-        ("a declared direction moved a text alignment - rule 5 forbids deriving one from it, so the declared node and its descendants must align exactly as they would undeclared:\n  "
+        ("a declared direction moved an alignment or a layout side - rule 5 forbids deriving either from it, so the declared node and its parts must align and lie as they would undeclared:\n  "
          + String.concat "\n  " problems)
 
 let private checkNoDerivedDirectionBehaviour () =
