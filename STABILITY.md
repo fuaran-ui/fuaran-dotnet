@@ -7813,7 +7813,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.109.1 — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix (DRAFT — untagged)
+## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
 
 **Class: no public-surface change.** No type, function or record moves. Two behaviours change, and one package's
 distribution.
