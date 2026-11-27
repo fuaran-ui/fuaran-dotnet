@@ -424,6 +424,35 @@ let private stampCanonical () =
             canonicalCss
             fingerprintMarker
 
+/// The canonical sheet is copied verbatim into every application that adopts it, so a comment
+/// naming a roadmap phase or an issue number ships into code that has no roadmap to read it
+/// against. A comment says what the rule does and why it exists; the number is the commit's.
+let private citationPattern =
+    System.Text.RegularExpressions.Regex(@"Phase [0-9]|(fuaran|forge)#[0-9]+")
+
+/// Every line of the canonical sheet that cites a phase or an issue, as `line: text`.
+let private citationFindings () =
+    File.ReadAllLines canonicalCss
+    |> Array.indexed
+    |> Array.filter (fun (_, line) -> citationPattern.IsMatch line)
+    |> Array.map (fun (i, line) -> sprintf "%d: %s" (i + 1) (line.Trim()))
+    |> Array.toList
+
+/// Fails when the canonical sheet carries a citation. Run by both targets, so the generator
+/// refuses to copy one into the tiers and the check refuses to pass over one.
+let private checkCitations () =
+    match citationFindings () with
+    | [] -> ()
+    | found ->
+        let sep = "\n  "
+
+        failwithf
+            "Reference-CSS citations — %d line(s) of %s name a phase or an issue. The sheet is copied into every host tier, so say what the rule does and why, never the number:%s%s"
+            (List.length found)
+            canonicalCss
+            sep
+            (System.String.Join(sep, found))
+
 /// What this checkout can say about one tier copy. `Absent` and `Missing` are
 /// deliberately distinct: a sibling that is not cloned is a narrower checkout
 /// and says nothing, whereas a copy deleted from a sibling that IS cloned is a
@@ -486,6 +515,7 @@ let private checkStamp () =
 
 let private cssCheck () =
     checkStamp ()
+    checkCitations ()
     let canonical, copies = inspectCssCopies ()
     Trace.tracefn "Reference CSS %s — sha256=%s" canonicalCss canonical
 
@@ -516,6 +546,8 @@ let private cssCheck () =
             (System.String.Join("\n  ", broken))
 
 let private cssSync () =
+    checkCitations ()
+
     // Restamp BEFORE the copies are inspected: the stamp is part of the bytes
     // being copied, so doing it the other way round leaves every tier one
     // generation behind and says nothing about it.

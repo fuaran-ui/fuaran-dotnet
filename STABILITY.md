@@ -7813,9 +7813,10 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.109.1 — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix (DRAFT — untagged)
+## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
 
-**Class: no public-surface change.** No type, function or record moves. Two behaviours change.
+**Class: no public-surface change.** No type, function or record moves. Two behaviours change, and one package's
+distribution.
 
 - **The event-handler strip reads attribute names, not values or text.** `Sanitize.sanitizeMarkdownHtml` used to
   remove any space-led `on<letter>` run between `<` and `>`, blind to attribute values, so
@@ -7828,6 +7829,12 @@ document that declares no ceiling is exactly the control it was.
 - **`Fuaran.UI.Renderer.Web` embeds `@fuaran-ui/renderer` 0.30.0.** The embedded browser bundle had stayed at 0.29.2
   when Phase 2804 advanced the renderer, so `RendererWebCheck` was red on `main`. The re-sync brings the chart data
   table (Phase 2804) and the handler-strip fix to .NET hosts that serve the embedded renderer.
+- **`Fuaran.UI.Fragments` ships its F# sources under `fable/` (Phase 2874).** The certified fragment library was a
+  compiled assembly declared .NET-only, so a Fable consumer, a browser client among them, could not use one certified
+  fragment from published packages. It is now packed the way `Fuaran.UI` is, and the Fable stage compiles it and
+  compares its fragments' wire bytes on .NET and under Node (DECISIONS D44). For a Fable consumer the package becomes
+  usable; a .NET consumer sees the same assembly and the same trees, and the package gains a `fable/` folder it never
+  reads. No fragment's output moves: the corpus fixtures are unchanged.
 
 ### Phase 2513 — a `Custom` renderer may be a DOM mount (additive)
 

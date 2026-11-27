@@ -1650,7 +1650,7 @@ $lawsOut = Join-Path $PSScriptRoot 'output'
 # A NEW LAW ADDS ITS PREFIX HERE IN THE SAME CHANGE-SET AS ITS LINES. There is no derivation that
 # would make that automatic without parsing the harness's source, and a pattern derived from the
 # output would admit whatever either leg happened to print.
-$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|BOARD-SNAPSHOT|ATTESTATION|TOTAL) '
+$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|BOARD-SNAPSHOT|ATTESTATION|FRAGMENTS|TOTAL) '
 
 if (-not $SkipLaws) {
     Write-Stage 'laws — DagMerge.mergeDag + FoldConfluence.laneFoldLaws + Deflate.inflate + Formatting.formatNumber, .NET vs Node'

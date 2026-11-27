@@ -10,6 +10,38 @@ consequence.
 
 ---
 
+## 2026-11-27 — D44: the certified fragment library is offered to Fable consumers
+
+**Decided (Phase 2874).** `Fuaran.UI.Fragments` ships its F# sources under `fable/`, as `Fuaran.UI` and
+`Fuaran.UI.Telemetry.Default` do, and no longer declares `<FableDotNetOnly>`. This supersedes, for this package, the
+standing answer Phase 2128 recorded when it made `FablePackCheck` require every Fable-reachable package to ship its
+sources or say why not: the library was declared .NET-only, and whether to offer it to Fable consumers was left as
+"a decision of its own". This is that decision.
+
+**Why.** A Fable consumer reads a package without `fable/` sources as a compiled assembly, so a browser client could
+not use one certified fragment from published packages, the public gallery among them. The alternative a page is
+left with is copying the builders, which certifies nothing: the copy drifts from the library the corpus pins and no
+gate sees it. The library references only `Fuaran.UI` and `FSharp.Core`, both already source-shipped, and uses no IO,
+reflection or regular expressions, so offering it costs only what every client-tier package already pays.
+
+**What holds it.** The Fable stage's derived portability set picks the project up from its `fable/` content item with
+no list edited, and compiles it under its own properties. The law harness (`tests/fable-laws/FragmentsLaw.fs`, law 15)
+builds every `Stdlib.all` declaration and example, the bound examples, the parameter panel, the scenario comparison and
+the refinable table materialised and built by their typed builders, and `refinedPipeline` over a sorted, filtered and
+paged view with the rows it evaluates to, and prints their canonical wire bytes; the stage compares the .NET and Node
+outputs line for line. `FablePackCheck` needs no change: a source-shipped package is honest when it declares no
+`<FableDotNetOnly>` and every project it references ships sources, which `Fuaran.UI` does.
+
+**Rejected.** Keeping the library .NET-only and shipping a separate Fable package: two packages of one library would
+certify one and distribute the other. Offering it without a law: a compile proves the library transpiles, not that a
+browser builds the tree the .NET certification measured.
+
+**Consequence.** A later change to the library is held to the Fable stage as well as the certification suite: a
+construct Fable cannot lower, or a fragment whose output differs under Node, fails the gate. `Fuaran.UI.Design`, which
+references the library, stays .NET-only for its own reason (it renders through the server renderer).
+
+---
+
 ## 2026-11-27 — D43: a declared direction keeps the node's alignment and its tile's layout; a bound node's `auto` alignment is not reachable from the stylesheet
 
 **Decided (Phase 2867).** Three rulings on WIRE_FORMAT's declared direction (rules 1 and 5), one entry.
