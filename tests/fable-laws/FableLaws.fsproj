@@ -15,11 +15,10 @@
     every line carries COUNTS, so two pipelines that are each internally lawful but disagree about
     a merge outcome still differ line-for-line. A law-only probe would report that as two greens.
 
-    It is in `Fuaran.sln` and in `test-suites.json`, unlike its two neighbours here
-    (`pure-tier-laws`, `ids-parity-probe`). That is deliberate and it is the difference between
-    this project and those: the .NET leg is an ordinary Expecto-shaped console the gate already
-    knows how to run, so registering it costs the gate nothing and gains it the same laws on the
-    canonical pipeline. The FABLE leg needs Node and is reached through the `FableCheck` target.
+    It is in `Fuaran.sln` but NOT in `test-suites.json`: Phase 1647 took it off that roster, and
+    `fable-check.ps1` is now the only runner of BOTH legs. Its .NET leg (`dotnet run`) and its
+    FABLE leg (compiled by Fable, run under Node) are run by that one stage and byte-compared there,
+    reached through the `FableCheck` target and `run.ps1`.
 
     NOTHING HERE MAY USE A CONSTRUCT FABLE CANNOT LOWER. No Expecto (it does not transpile), no
     `System.IO`, no reflection, no `StringComparer`. The whole file set is compiled to JavaScript,

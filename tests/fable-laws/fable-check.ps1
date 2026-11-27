@@ -1650,7 +1650,19 @@ $lawsOut = Join-Path $PSScriptRoot 'output'
 # A NEW LAW ADDS ITS PREFIX HERE IN THE SAME CHANGE-SET AS ITS LINES. There is no derivation that
 # would make that automatic without parsing the harness's source, and a pattern derived from the
 # output would admit whatever either leg happened to print.
-$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|BOARD-SNAPSHOT|ATTESTATION|FRAGMENTS|TOTAL) '
+#
+# The same gap recurred after that note: the escape law (`escape`, 144 lines), the operability law
+# (`operability`, 42), `SANITIZE`, `FLOATLAYOUT` and the dag batch probe (`law`) all printed lines
+# this pattern did not name, so 189 of the harness's 287 lines never reached the comparison. They
+# are named below, and the pattern is matched CASE-SENSITIVELY (`-cmatch`) because the lowercase
+# prefixes are as printed. What stops a NEXT law falling outside it is the unshaped-line guard after
+# the Node run: the Node leg prints nothing but the harness's own lines, so any non-empty line there
+# that this pattern does not name fails the stage, naming the line.
+$lineShape = '^(MERGE|MERGELAW|MERGEFINDING|MERGEFAIL|ADEQUACY|KIT|KITFAIL|DEFLATE|DEFLATEFAIL|SELECTIONFIELD|DATESENTINEL|DAGCHECKPOINT|NUMBERFORMAT|BOARD-SNAPSHOT|ATTESTATION|FRAGMENTS|escape|operability|SANITIZE|FLOATLAYOUT|law|TOTAL) '
+# The ONLY lines the Node leg may print outside `$lineShape`: Node's own process warnings, which go
+# to stderr (merged by `Invoke-Leg`) as `(node:<pid>) …` plus a `(Use `node --trace-warnings …`)`
+# hint. They are the runtime's, not the harness's, and they vary with the Node version.
+$nodeChatter = '^\(node:\d+\) |^\(Use `node --trace-'
 
 if (-not $SkipLaws) {
     Write-Stage 'laws — DagMerge.mergeDag + FoldConfluence.laneFoldLaws + Deflate.inflate + Formatting.formatNumber, .NET vs Node'
@@ -1699,7 +1711,7 @@ if (-not $SkipLaws) {
         # Every line is kept (quietly) and only the comparison is filtered: a build that fails before
         # the harness runs prints its errors in lines the filter drops, and those are the account of it.
         $dotnetLeg = Invoke-Leg -Exe 'dotnet' -Quiet -Arguments @('run', '--project', (Join-Path $PSScriptRoot 'FableLaws.fsproj'), '-c', 'Release')
-        $dotnetOut = @($dotnetLeg.Output | Where-Object { $_ -match $lineShape })
+        $dotnetOut = @($dotnetLeg.Output | Where-Object { $_ -cmatch $lineShape })
         $dotnetExit = $dotnetLeg.Exit
         Add-Timing "$lawsLabel (.NET run)" 'ran' $dotnetLeg.Seconds
         if ($dotnetExit -ne 0) {
@@ -1722,8 +1734,22 @@ if (-not $SkipLaws) {
         }
         else {
             $nodeLeg = Invoke-Leg -Exe 'node' -Quiet -Arguments @((Join-Path $lawsOut 'Program.js'))
-            $fableOut = @($nodeLeg.Output | Where-Object { $_ -match $lineShape })
+            $fableOut = @($nodeLeg.Output | Where-Object { $_ -cmatch $lineShape })
             $fableExit = $nodeLeg.Exit
+
+            # The unshaped-line guard. A harness line `$lineShape` does not name is dropped from
+            # BOTH captures and so is compared by nobody; refusing it here is what keeps the
+            # pattern total over what the laws print. Read off the Node leg because it carries no
+            # build chatter (the .NET leg's `dotnet run` may print MSBuild warnings).
+            $unshaped = @($nodeLeg.Output | Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_) -and $_ -cnotmatch $lineShape -and $_ -notmatch $nodeChatter
+                })
+            if ($unshaped.Count -gt 0) {
+                $failures.Add("$($unshaped.Count) law harness line(s) match no prefix in the line-shape pattern, so the byte comparison cannot see them; name their prefix in it")
+                foreach ($line in $unshaped | Select-Object -First 10) {
+                    Write-Host "    unshaped: $line" -ForegroundColor Red
+                }
+            }
             Add-Timing "$lawsLabel (Node run)" 'ran' $nodeLeg.Seconds
             if ($fableExit -ne 0) {
                 $failures.Add((Write-LegFailure -Leg 'law harness Node run' -Command $nodeLeg.Command -Exit $fableExit -Seconds $nodeLeg.Seconds -Output $nodeLeg.Output))
