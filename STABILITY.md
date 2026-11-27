@@ -7813,7 +7813,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.108.0 — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, Phase 2775 retires one public function, and Phase 2776 adds a third field and a parameter to one function (DRAFT — untagged)
+## 0.108.0 (RELEASED — tagged v0.108.0 at 1497438f, 2026-11-27) — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, Phase 2775 retires one public function, and Phase 2776 adds a third field and a parameter to one function
 
 **Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the
 additive class, and Phase 2749 advanced it. In this repository's 0.x line a breaking change takes a minor, and
@@ -8219,7 +8219,7 @@ every rule of the contract's `chartTable` section passes, with a check on this t
 
 ---
 
-## 0.107.0 — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive (DRAFT — untagged)
+## 0.107.0 (RELEASED — tagged v0.107.0 at fecef985, 2026-11-25) — the slot opened after v0.106.0 was released, by the raise of `Fuaran.Compute.*` to 0.47.0, whose change is additive
 
 **Class: additive, by dependency.** `v0.106.0` is tagged, so nothing rides it: this change opens the next slot.
 `FuaranCoreComputeVersion` moves 0.46.0 → 0.47.0, so every package here that references a `Fuaran.Compute.*`
@@ -8273,7 +8273,7 @@ gates). **No escape hatch is created or widened.**
 
 ---
 
-## 0.106.0 — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking (DRAFT — untagged)
+## 0.106.0 (RELEASED — tagged v0.106.0 at 13380875, 2026-11-23) — the slot opened after v0.105.0 was released, by Phase 2435 (the program adapters adopt `Fuaran.Program` 0.17.0), whose change is breaking
 
 **Class: breaking, by dependency and in behaviour.** `v0.105.0` is tagged and served by nuget.org, so nothing
 rides it: this change opens the next slot. Packages `Fuaran.UI.Program` and `Fuaran.UI.Program.Server` are built
@@ -8527,7 +8527,7 @@ answer since its Phase 710. The Core-produced corpus families were already at ki
 
 ---
 
-## 0.105.0 — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking (DRAFT — untagged)
+## 0.105.0 (RELEASED — tagged v0.105.0 at 96b4ef9c, 2026-11-21) — the announced breaking cut (Phase 2303); the slot opened after v0.104.0 was released, advanced from 0.104.1 on 2026-11-14 by Phase 2716, whose change is breaking
 
 _**This is the announced breaking cut.** The pre-1.0 surface debts that could not ride an ordinary draft slot are
 released together, once, under this one number. The number is the standing breaking-class draft: it was claimed in
