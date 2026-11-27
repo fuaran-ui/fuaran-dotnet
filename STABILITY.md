@@ -7813,6 +7813,22 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
+## 0.109.0 (DRAFT) — the slot opened after v0.108.0 was released, by Phase 2867 (a declared direction keeps the node's alignment), whose change is to the reference stylesheet only
+
+**Class: no public-surface change.** No type, function or record moves. The reference stylesheet that
+`Fuaran.UI.Renderer` ships (and its byte copies in the TypeScript, Go, Rust and Python hosts) changes how a node
+that declares `style.direction` lays out, so the release carries it under its own number.
+
+- **What changes.** A node declaring `style.direction` keeps the text alignment it would have undeclared, and a
+  declared Fact, label-value row or Metric lays out exactly as its undeclared twin while its value reads in the
+  declared direction, isolated (WIRE_FORMAT, the declared direction, rule 5). Before, the declaration moved the
+  node's alignment and reversed its flex layout.
+- **What does not.** A tree that declares no direction renders exactly as before. A declared runtime-bound display
+  leaf now aligns to its context rather than as its undeclared twin would; DECISIONS D43 records why a stylesheet
+  cannot tell it from a literal node, and Phase 2869 moves the emission so it can.
+
+---
+
 ## 0.108.0 (RELEASED — tagged v0.108.0 at 1497438f, 2026-11-27) — the slot opened after v0.107.0 was released, by Phase 2753 (a refinable table fragment, additive), and advanced to the breaking class by Phase 2749 (`RenderPolicy` gains a field); Phase 2751 adds a second field of the same class, Phase 2775 retires one public function, and Phase 2776 adds a third field and a parameter to one function
 
 **Class: breaking, for one record.** `v0.107.0` is tagged, so nothing rides it: Phase 2753 opened this slot at the

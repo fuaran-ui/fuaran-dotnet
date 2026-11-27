@@ -856,7 +856,7 @@
          this 0.x line a breaking change takes a minor and 0.108.0 is already
          one minor ahead of the last tag. An UNTAGGED DRAFT: changes of this
          class or lower ride it. See STABILITY.md "0.108.0". -->
-    <Version>0.108.0</Version>
+    <Version>0.109.0</Version>
   </PropertyGroup>
 
   <!-- Package metadata for the published Fuaran.UI.* packages (nuget.org
