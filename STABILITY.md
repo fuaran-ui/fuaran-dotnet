@@ -7813,7 +7813,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.109.0 (DRAFT) — the slot opened after v0.108.0 was released, by Phase 2867 (a declared direction keeps the node's alignment), whose change is to the reference stylesheet only
+## 0.109.0 (RELEASED — tagged v0.109.0 at 59bdab44, 2026-11-27) — the slot opened after v0.108.0 was released, by Phase 2867 (a declared direction keeps the node's alignment), whose change is to the reference stylesheet only
 
 **Class: no public-surface change.** No type, function or record moves. The reference stylesheet that
 `Fuaran.UI.Renderer` ships (and its byte copies in the TypeScript, Go, Rust and Python hosts) changes how a node
