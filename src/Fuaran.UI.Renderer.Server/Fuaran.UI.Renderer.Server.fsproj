@@ -5,9 +5,9 @@
     <IsPackable>true</IsPackable>
     <!-- Phase 2128: a .NET-only package a Fable consumer could otherwise reach (it references
          packages that ship fable/ sources); checked by build/FablePackCheck.fs. -->
-    <FableDotNetOnly>The server-side HTML renderer for .NET hosts (Feliz.ViewEngine). Its consumers are .NET server processes; a browser client renders through Fuaran.UI.Renderer, which ships its sources.</FableDotNetOnly>
+    <FableDotNetOnly>The server-side HTML renderer for .NET hosts. Its consumers are .NET server processes; a browser client renders through Fuaran.UI.Renderer, which ships its sources.</FableDotNetOnly>
     <PackageId>Fuaran.UI.Renderer.Server</PackageId>
-    <Description>Fuaran server-side renderer — turns a Node tree into an HTML string on plain .NET (no React, no Fable) via Feliz.ViewEngine, for SEO surfaces with no client-runtime requirement. Class + ARIA parity with the Feliz client renderer (shared Fuaran.UI.Renderer.Core spine), and the same declared sanitisation posture (SANITIZATION.md) – with the attribute-name gate re-checked at the emission site, since HTML offers no escape for an illegal character in an attribute name and a string renderer has no library validation to fall back on. Apache-2.0 licensed.</Description>
+    <Description>Fuaran server-side renderer — turns a Node tree into an HTML string on plain .NET (no React, no Fable, no client DSL: its own string emitter over the shared ElementPlan), for SEO surfaces with no client-runtime requirement. Class + ARIA parity with the Feliz client renderer (shared Fuaran.UI.Renderer.Core spine), and the same declared sanitisation posture (SANITIZATION.md) – with the attribute-name gate re-checked at the emission site, since HTML offers no escape for an illegal character in an attribute name and a string renderer has no library validation to fall back on. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Render.fs downcasts and the shared spine guard string DOM seams with
          isNull (defence in depth); under F# 10 nullness that warns and the repo
@@ -19,6 +19,10 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Markup.fs — the Phase 2515 string emitter: the server markup type, its
+         escaping floor and the ElementPlan emitter. First, because the Custom
+         registry's renderers return its type. -->
+    <Compile Include="Markup.fs" />
     <Compile Include="Registry.fs" />
     <Compile Include="Render.fs" />
     <!-- Email.fs — the Phase 441 email-safe Display-subset projection. After
@@ -47,6 +51,5 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
-    <PackageReference Include="Feliz.ViewEngine" />
   </ItemGroup>
 </Project>

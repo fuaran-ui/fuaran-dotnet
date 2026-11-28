@@ -41,7 +41,7 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | `Fuaran.UI.StyleObserver` | Concrete style observers — a browser (Fable) observer and an in-memory observer for tests |
 | `Fuaran.UI.ThemeManifest` | Declared token contract — a DTCG-compatible theme manifest with per-token tone roles and soft-weighted invariants |
 | `Fuaran.UI.Renderer.Core` | The emission-agnostic render spine shared by both renderers — class-name vocabulary, accessibility projection, sanitisation, binding resolution, locale formatting, deterministic ids. FSharp.Core only |
-| `Fuaran.UI.Renderer.Server` | Server-side renderer — Node tree to an HTML string on plain .NET via Feliz.ViewEngine, with class and ARIA parity with the client renderer |
+| `Fuaran.UI.Renderer.Server` | Server-side renderer — Node tree to an HTML string on plain .NET through its own string emitter (no Feliz package), with class and ARIA parity with the client renderer |
 | `Fuaran.UI.Giraffe` | Giraffe / ASP.NET adapter that serves a Node tree as a crawlable page, with a typed document shell (meta, canonical, OG, JSON-LD) |
 | `Fuaran.UI.Site` | Page-set layer for pure-SSR sites — markdown page discovery, a typed site check, and a computed render plan |
 | `Fuaran.UI.Site.Giraffe` | Giraffe host for `Fuaran.UI.Site` — one route per pre-rendered page, optional raw-markdown routes, sitemap and robots |

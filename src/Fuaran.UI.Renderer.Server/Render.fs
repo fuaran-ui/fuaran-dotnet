@@ -4,7 +4,8 @@
 //  Fuaran — server-side renderer (Phase 140).
 //
 //  Turns a `Node<'Msg>` tree into an HTML *string* on plain .NET — no React, no
-//  Fable — via `Feliz.ViewEngine`. A Giraffe / ASP.NET host server-renders
+//  Fable, no client DSL: elements are written by this package's own emitter
+//  (`Markup`, Phase 2515). A Giraffe / ASP.NET host server-renders
 //  Fuaran chrome for SEO surfaces with no client-runtime requirement and no
 //  visual degradation; the same tree later hydrates client-side (Phase 143).
 //
@@ -15,8 +16,8 @@
 //  formatting all come from the shared `Fuaran.UI.Renderer.Core` spine, so the
 //  two renderers cannot drift on those axes. The per-node wrapper and the leaf
 //  display kinds are `ElementPlan` values both renderers emit (Phase 2108), so
-//  their element structure is defined once; the remaining kinds are still
-//  re-emitted here against the ViewEngine API (the same Feliz-shaped calls).
+//  their element structure is defined once; the structural arms (`Custom`, the
+//  island boundary) build their few elements here with the `Markup` builders.
 //
 //  Server semantics (see `docs/SSR.md` for the full table):
 //   - No runtime, no dispatch. `Action`-bearing nodes render inert: a `Button`
@@ -44,7 +45,6 @@
 //  CSS stay host-owned; this renderer emits the body-fragment HTML only.
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
@@ -120,75 +120,6 @@ let internal renderText (ctx: ServerRenderContext) (text: TextSource) : string =
 let internal formatNumber (ctx: ServerRenderContext) (format: CellFormat) (value: float) : string =
     Formatting.formatNumberIn ctx.Sources.Locale format value
 
-// ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
-
-/// This renderer's emitter for `ElementPlan` — the one place the server turns
-/// a planned element into a Feliz.ViewEngine element. Attributes land verbatim
-/// (`class` included, which is what `prop.className` writes); a void tag goes
-/// through the void-element constructor the library's own `Html.*` members
-/// use; inline style declarations are written in their canonical spelling;
-/// a reconciliation key is React's alone and is dropped; pre-built markup is
-/// written raw. The client renderer's `Emit` is the same mapping onto Feliz.
-[<RequireQualifiedAccess>]
-module private Emit =
-    /// The boolean attributes this renderer wrote through the element
-    /// library's boolean props before Phase 2278, which spell them
-    /// `name="true"`; every other flag was a custom attribute with an empty
-    /// value. Keeping both spellings keeps the served bytes.
-    let private libraryBooleans =
-        set [ "disabled"; "controls"; "loop"; "autoplay"; "muted"; "required" ]
-
-    /// A planned property on an element of `tag`; a behaviour attachment
-    /// point writes nothing — the served affordance is inert (Phase 2278).
-    /// Phase 2290 — a controlled value lands where the document can show it:
-    /// the `value` attribute on an input, nothing on a `<select>` or a
-    /// `<textarea>` (whose selection / text the plan carries elsewhere).
-    let private property (tag: string) (p: ElementPlan.Prop) : IReactProperty list =
-        match p with
-        | ElementPlan.Prop.Attr(name, value) -> [ prop.custom (name, value) ]
-        | ElementPlan.Prop.Style declarations ->
-            [ prop.style (declarations |> List.map (fun (k, v) -> style.custom (k, v))) ]
-        | ElementPlan.Prop.Flag name when libraryBooleans.Contains name -> [ prop.custom (name, "true") ]
-        | ElementPlan.Prop.Flag name -> [ prop.custom (name, "") ]
-        | ElementPlan.Prop.Value value when tag <> "select" && tag <> "textarea" -> [ prop.custom ("value", value) ]
-        | ElementPlan.Prop.Checked(true, served) -> [ prop.custom ("checked", served) ]
-        | ElementPlan.Prop.Selected -> [ prop.custom ("selected", "selected") ]
-        | ElementPlan.Prop.Value _
-        | ElementPlan.Prop.Values _
-        | ElementPlan.Prop.Checked _
-        | ElementPlan.Prop.Behaviour _ -> []
-
-    /// A `<textarea>`'s served text is its controlled value (Phase 2290).
-    let private textareaText (spec: ElementPlan.ElementSpec<ReactElement>) : string option =
-        if spec.Tag = "textarea" then
-            spec.Props
-            |> List.tryPick (function
-                | ElementPlan.Prop.Value v -> Some v
-                | _ -> None)
-        else
-            None
-
-    /// Emit a plan.
-    let rec plan (p: ElementPlan.Plan<ReactElement>) : ReactElement =
-        match p with
-        | ElementPlan.Plan.Host element -> element
-        | ElementPlan.Plan.Nothing -> Html.none
-        | ElementPlan.Plan.TextNode text -> Html.text text
-        | ElementPlan.Plan.Element spec ->
-            let props =
-                [ yield! spec.Props |> List.collect (property spec.Tag)
-                  match spec.Content, textareaText spec with
-                  | ElementPlan.Content.Empty, Some text -> prop.text text
-                  | ElementPlan.Content.Empty, None -> ()
-                  | ElementPlan.Content.Text text, _ -> prop.text text
-                  | ElementPlan.Content.Children children, _ -> prop.children (children |> List.map plan)
-                  | ElementPlan.Content.InnerHtml markup, _ -> prop.dangerouslySetInnerHTML markup ]
-
-            if ElementPlan.voidTags.Contains spec.Tag then
-                Interop.createVoidElement spec.Tag props
-            else
-                Interop.createElement spec.Tag props
-
 // ─── The renderer ───────────────────────────────────────────────────────────
 
 /// What the walk carries that the PUBLIC `ServerRenderContext` does not
@@ -217,14 +148,14 @@ module private Walk =
     /// The same walk one level down.
     let deeper (walk: Walk) : Walk = { walk with Depth = walk.Depth + 1 }
 
-let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : Markup =
     if walk.Depth > Fuaran.UI.WireLimits.MaxDepth then
         // Phase 781 — a visible, machine-readable truncation marker in place of a
         // subtree nested past `WireLimits.MaxDepth`: the renderer is total by
         // signature, and the alternative is a `StackOverflowException` (this walk
         // costs ~15 KB of stack per level in Release). Every wire path refused such
         // a tree already, so a host reaching it built the tree in-process.
-        Emit.plan (ElementPlan.NodePlan.depthExceeded node.Id)
+        Markup.ofPlan (ElementPlan.NodePlan.depthExceeded node.Id)
     // Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE. A resolved `false` on
     // `node.Visible` emits NOTHING: no element, no placeholder, no comment
     // marker and no `aria-hidden`. The rule is `BindingResolver.isNodeVisible`,
@@ -238,14 +169,14 @@ let rec private renderNode (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
     // path, so the `Errored` warning is the client's alone; the RENDERING is
     // identical either way, which is the property hydration depends on.
     elif not (BindingResolver.isNodeVisible ctx.Sources node) then
-        Html.none
+        Markup.empty
     else
         renderNodeCore walk ctx node
 
 /// The node render proper. Reached only through `renderNode`, which is what
 /// enforces `MaxDepth` — split out so the guard is two lines rather than a
 /// wrapper around fifty indented ones.
-and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : ReactElement =
+and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<obj>) : Markup =
     let id = node.Id
 
     // Phase 2108 — the wrapper is the shared `NodePlan`: tooltip, motion class,
@@ -270,7 +201,7 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
         with ex when not walk.InErrorBoundary ->
             let kindName = RenderParity.nodeKindName node.Kind
 
-            Emit.plan (
+            Markup.ofPlan (
                 ElementPlan.NodePlan.renderFailure
                     id
                     kindName
@@ -279,7 +210,7 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
             )
 
     let element =
-        Emit.plan (ElementPlan.NodePlan.wrapper id routing (ElementPlan.Plan.Host kindBody))
+        Markup.ofPlan (ElementPlan.NodePlan.wrapper id routing (ElementPlan.Plan.Host kindBody))
 
     // Hydration island boundary (Phase 163). When the node is marked
     // `Node.asIsland`, wrap its rendered element in a `data-fuaran-island`
@@ -287,11 +218,7 @@ and private renderNodeCore (walk: Walk) (ctx: ServerRenderContext) (node: Node<o
     // this node's static HTML, so the client `hydrateRoot` is mismatch-free.
     // Zero islands → no wrapper (this match is `None` for every ordinary node).
     match Fuaran.UI.Node.islandId node with
-    | Some island ->
-        Html.div
-            [ prop.className "fuaran-island"
-              prop.custom ("data-fuaran-island", island)
-              prop.children [ element ] ]
+    | Some island -> Markup.element "div" [ "class", "fuaran-island"; "data-fuaran-island", island ] [ element ]
     | None -> element
 
 /// The per-kind dispatch. Phase 2108 / 2278 — a planned kind is ONE behaviour
@@ -323,28 +250,31 @@ and private renderKind
     // their own semantic element. `[]` for every other kind, which is every
     // arm below except `Link` / `Button` / `Image`.
     (semanticAttrs: (string * string) list)
-    : ReactElement =
+    : Markup =
     match kind with
     // Phase 2278 — the layout kinds are `ElementPlan.LayoutPlan` values,
     // emitted inert (the server binds no attachment point).
-    | NodeKind.Box spec -> Emit.plan (ElementPlan.LayoutPlan.box (planContext walk ctx parentNodeId) spec)
-    | NodeKind.SplitPanel spec -> Emit.plan (ElementPlan.LayoutPlan.splitPanel (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Box spec -> Markup.ofPlan (ElementPlan.LayoutPlan.box (planContext walk ctx parentNodeId) spec)
+    | NodeKind.SplitPanel spec ->
+        Markup.ofPlan (ElementPlan.LayoutPlan.splitPanel (planContext walk ctx parentNodeId) spec)
     | NodeKind.Tabs spec ->
-        Emit.plan (
+        Markup.ofPlan (
             ElementPlan.LayoutPlan.tabs
                 (planContext walk ctx parentNodeId)
                 spec
                 (ElementPlan.TabsModel.ofSpec ctx.Sources spec)
         )
     | NodeKind.SummaryList spec ->
-        Emit.plan (ElementPlan.LayoutPlan.summaryList (planContext walk ctx parentNodeId) spec)
-    | NodeKind.Disclosure spec -> Emit.plan (ElementPlan.LayoutPlan.disclosure (planContext walk ctx parentNodeId) spec)
-    | NodeKind.Stepper spec -> Emit.plan (ElementPlan.LayoutPlan.stepper (planContext walk ctx parentNodeId) spec)
-    | NodeKind.Modal spec -> Emit.plan (ElementPlan.LayoutPlan.modal (planContext walk ctx parentNodeId) spec)
-    | NodeKind.ScrollArea spec -> Emit.plan (ElementPlan.LayoutPlan.scrollArea (planContext walk ctx parentNodeId) spec)
-    | NodeKind.Heading spec -> Emit.plan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
-    | NodeKind.Markdown spec -> Emit.plan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
-    | NodeKind.Text spec -> Emit.plan (ElementPlan.DisplayPlan.text ctx.Sources spec)
+        Markup.ofPlan (ElementPlan.LayoutPlan.summaryList (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Disclosure spec ->
+        Markup.ofPlan (ElementPlan.LayoutPlan.disclosure (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Stepper spec -> Markup.ofPlan (ElementPlan.LayoutPlan.stepper (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Modal spec -> Markup.ofPlan (ElementPlan.LayoutPlan.modal (planContext walk ctx parentNodeId) spec)
+    | NodeKind.ScrollArea spec ->
+        Markup.ofPlan (ElementPlan.LayoutPlan.scrollArea (planContext walk ctx parentNodeId) spec)
+    | NodeKind.Heading spec -> Markup.ofPlan (ElementPlan.DisplayPlan.heading ctx.Sources spec)
+    | NodeKind.Markdown spec -> Markup.ofPlan (ElementPlan.DisplayPlan.markdown ctx.Policy.Egress ctx.Sources spec)
+    | NodeKind.Text spec -> Markup.ofPlan (ElementPlan.DisplayPlan.text ctx.Sources spec)
     | NodeKind.Metric spec ->
         // Phase 632 — a scalar slot: a `Binding.Transform` resolves to its 1×1
         // result cell. Phase 2209 — its bound field rides the same evaluation
@@ -362,7 +292,7 @@ and private renderKind
         | None ->
             // Phase 2749 — the derivation affordance, planned as the client's
             // is, so a policy-on document hydrates (`Off`: the metric's plan).
-            Emit.plan (
+            Markup.ofPlan (
                 ElementPlan.DerivationPlan.around
                     (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Value)
                     (ElementPlan.RefreshPlan.aroundMetric
@@ -371,10 +301,10 @@ and private renderKind
                         (ElementPlan.RefreshPlan.forBinding ctx.Policy ctx.Sources spec.Value)
                         (ElementPlan.DisplayPlan.metric ctx.Sources resolution field spec))
             )
-    | NodeKind.Badge spec -> Emit.plan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
-    | NodeKind.Skeleton spec -> Emit.plan (ElementPlan.DisplayPlan.skeleton spec)
-    | NodeKind.Icon spec -> Emit.plan (ElementPlan.DisplayPlan.icon spec)
-    | NodeKind.Callout spec -> Emit.plan (ElementPlan.DisplayPlan.callout ctx.Sources spec)
+    | NodeKind.Badge spec -> Markup.ofPlan (ElementPlan.DisplayPlan.badge ctx.Sources spec)
+    | NodeKind.Skeleton spec -> Markup.ofPlan (ElementPlan.DisplayPlan.skeleton spec)
+    | NodeKind.Icon spec -> Markup.ofPlan (ElementPlan.DisplayPlan.icon spec)
+    | NodeKind.Callout spec -> Markup.ofPlan (ElementPlan.DisplayPlan.callout ctx.Sources spec)
     | NodeKind.Progress spec ->
         let resolution = BindingResolver.resolve ctx.Sources spec.Fraction
 
@@ -386,7 +316,7 @@ and private renderKind
         with
         | Some slot -> renderNode (Walk.deeper walk) ctx slot
         | None ->
-            Emit.plan (
+            Markup.ofPlan (
                 ElementPlan.DisplayPlan.progress
                     ctx.Sources
                     (ElementPlan.styleSite ctx.Policy.Csp (Some ctx.Styles) parentNodeId)
@@ -397,8 +327,8 @@ and private renderKind
         BindingResolver.tryResolve ctx.Sources spec.Source
         |> Option.bind (Fuaran.UI.Charts.tryLowerSparkline spec)
         |> ElementPlan.DisplayPlan.sparkline ctx.Sources
-        |> Emit.plan
-    | NodeKind.Drawing spec -> Emit.plan (ElementPlan.DisplayPlan.drawing ctx.Sources spec)
+        |> Markup.ofPlan
+    | NodeKind.Drawing spec -> Markup.ofPlan (ElementPlan.DisplayPlan.drawing ctx.Sources spec)
     | NodeKind.LabelValueRow spec ->
         // Phase 632 — a scalar slot, as `Metric`'s.
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
@@ -410,28 +340,28 @@ and private renderKind
                 resolution
         with
         | Some slot -> renderNode (Walk.deeper walk) ctx slot
-        | None -> Emit.plan (ElementPlan.DisplayPlan.labelValueRow ctx.Sources resolution spec)
-    | NodeKind.Fact spec -> Emit.plan (ElementPlan.DisplayPlan.fact ctx.Sources spec)
+        | None -> Markup.ofPlan (ElementPlan.DisplayPlan.labelValueRow ctx.Sources resolution spec)
+    | NodeKind.Fact spec -> Markup.ofPlan (ElementPlan.DisplayPlan.fact ctx.Sources spec)
     // Phase 2278 — the media kinds are `ElementPlan.MediaPlan` values.
     | NodeKind.Link spec ->
-        Emit.plan (ElementPlan.MediaPlan.link (planContext walk ctx parentNodeId) spec semanticAttrs)
+        Markup.ofPlan (ElementPlan.MediaPlan.link (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Image spec ->
-        Emit.plan (ElementPlan.MediaPlan.image (planContext walk ctx parentNodeId) spec semanticAttrs)
+        Markup.ofPlan (ElementPlan.MediaPlan.image (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Media spec ->
-        Emit.plan (ElementPlan.MediaPlan.media (planContext walk ctx parentNodeId) spec semanticAttrs)
+        Markup.ofPlan (ElementPlan.MediaPlan.media (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Embed spec ->
-        Emit.plan (ElementPlan.MediaPlan.embed (planContext walk ctx parentNodeId) spec semanticAttrs)
+        Markup.ofPlan (ElementPlan.MediaPlan.embed (planContext walk ctx parentNodeId) spec semanticAttrs)
     | NodeKind.Tree spec ->
-        Emit.plan (ElementPlan.VisPlan.tree ctx.Sources spec (ElementPlan.VisPlan.treeState ctx.Sources spec))
-    | NodeKind.List spec -> Emit.plan (ElementPlan.DisplayPlan.list ctx.Sources spec)
-    | NodeKind.Toast spec -> Emit.plan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
-    | NodeKind.CodeBlock spec -> Emit.plan (ElementPlan.DisplayPlan.codeBlock spec)
-    | NodeKind.Math spec -> Emit.plan (ElementPlan.DisplayPlan.math spec)
+        Markup.ofPlan (ElementPlan.VisPlan.tree ctx.Sources spec (ElementPlan.VisPlan.treeState ctx.Sources spec))
+    | NodeKind.List spec -> Markup.ofPlan (ElementPlan.DisplayPlan.list ctx.Sources spec)
+    | NodeKind.Toast spec -> Markup.ofPlan (ElementPlan.DisplayPlan.toast ctx.Sources spec)
+    | NodeKind.CodeBlock spec -> Markup.ofPlan (ElementPlan.DisplayPlan.codeBlock spec)
+    | NodeKind.Math spec -> Markup.ofPlan (ElementPlan.DisplayPlan.math spec)
     // -- Input --
-    | NodeKind.Button spec -> Emit.plan (ElementPlan.InputPlan.button ctx.Sources spec semanticAttrs)
-    | NodeKind.Select spec -> Emit.plan (ElementPlan.InputPlan.select ctx.Sources spec)
+    | NodeKind.Button spec -> Markup.ofPlan (ElementPlan.InputPlan.button ctx.Sources spec semanticAttrs)
+    | NodeKind.Select spec -> Markup.ofPlan (ElementPlan.InputPlan.select ctx.Sources spec)
     | NodeKind.Form spec ->
-        Emit.plan (
+        Markup.ofPlan (
             ElementPlan.InputPlan.form
                 (planContext walk ctx parentNodeId)
                 spec
@@ -442,7 +372,7 @@ and private renderKind
                           (ElementPlan.InputPlan.fieldControl ctx.Sources field) ]
         )
     | NodeKind.Filters specs ->
-        Emit.plan (
+        Markup.ofPlan (
             ElementPlan.InputPlan.filters
                 [ for spec in specs.Items ->
                       ElementPlan.InputPlan.filter
@@ -450,7 +380,7 @@ and private renderKind
                           spec
                           (ElementPlan.InputPlan.filterControl ctx.Sources spec) ]
         )
-    | NodeKind.FileUpload spec -> Emit.plan (ElementPlan.InputPlan.fileUpload ctx.Sources spec)
+    | NodeKind.FileUpload spec -> Markup.ofPlan (ElementPlan.InputPlan.fileUpload ctx.Sources spec)
     // -- Vis --
     | NodeKind.DataGrid spec ->
         // Phase 393 — a static grid is the semantic table. Phase 2775 — a bound
@@ -459,9 +389,9 @@ and private renderKind
         // the derivation host (Phase 2749) exactly as the client's arm wraps it;
         // an unresolved source keeps the placeholder, which names why.
         match spec.StaticRows with
-        | Some sr -> Emit.plan (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
+        | Some sr -> Markup.ofPlan (ElementPlan.VisPlan.staticGrid ctx.Sources parentNodeId spec sr)
         | None ->
-            Emit.plan (
+            Markup.ofPlan (
                 ElementPlan.DerivationPlan.around
                     (ElementPlan.DerivationPlan.forBinding ctx.Policy ctx.Sources spec.Source)
                     (ElementPlan.RefreshPlan.aroundGrid
@@ -473,7 +403,7 @@ and private renderKind
         // `Charts`, under the provenance scope this context declares (Phase 2068);
         // the client's arm makes the same call through its lowering memo. Phase
         // 2776 — with the data table the policy offers, which needs no script.
-        Emit.plan (
+        Markup.ofPlan (
             ElementPlan.VisPlan.chart
                 (planContext walk ctx parentNodeId)
                 ctx.Policy
@@ -486,7 +416,7 @@ and private renderKind
                     (renderText ctx))
                 Fuaran.UI.Charts.tableModel
         )
-    | NodeKind.Map spec -> Emit.plan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
+    | NodeKind.Map spec -> Markup.ofPlan (ElementPlan.VisPlan.map (planContext walk ctx parentNodeId) state spec)
     | NodeKind.ErrorBoundary spec ->
         // Phase 2041 — the client's boundary, same semantics. The child renders
         // with the per-node guard suspended, so a throw anywhere in it (a host
@@ -508,7 +438,7 @@ and private renderKind
                 // 2108: this tier used to hash the `.Fallback` name instead).
                 let kindName = RenderParity.nodeKindName kind
 
-                Emit.plan (
+                Markup.ofPlan (
                     ElementPlan.NodePlan.renderFailure
                         parentNodeId
                         (kindName + ".Fallback")
@@ -561,7 +491,7 @@ and private renderKind
         | None -> renderNode (Walk.deeper walk) ctx spec.Default
     | NodeKind.FragmentDecl _ ->
         // Zero-paint: the decl is a template, not visible output.
-        Html.none
+        Markup.empty
     | NodeKind.FragmentRef spec ->
         // Phase 2041 — the client's expansion, through the SAME shared walk: the
         // body's interior ids are namespaced under the ref's own id
@@ -572,7 +502,7 @@ and private renderKind
         let raw = spec.Name
 
         if Set.contains raw walk.Expanding then
-            Emit.plan (ElementPlan.StructuralPlan.fragmentCycle raw)
+            Markup.ofPlan (ElementPlan.StructuralPlan.fragmentCycle raw)
         else
             match Map.tryFind raw ctx.Fragments with
             | Some body ->
@@ -584,7 +514,7 @@ and private renderKind
                         Expanding = Set.add raw walk.Expanding }
                     ctx
                     namespaced
-            | None -> Emit.plan (ElementPlan.StructuralPlan.fragmentUnresolved raw)
+            | None -> Markup.ofPlan (ElementPlan.StructuralPlan.fragmentUnresolved raw)
     | NodeKind.Custom spec ->
         renderCustom
             ctx
@@ -599,7 +529,7 @@ and private renderKind
         // as the client renderer, so server and client emit byte-identical
         // structure across the boundary (no hydration mismatch); the guest
         // loader attaches client-side (Phase 266).
-        Emit.plan (
+        Markup.ofPlan (
             ElementPlan.StructuralPlan.mountBoundary
                 spec.ScopeId
                 (ElementPlan.StructuralPlan.mountPlaceholder spec.ScopeId)
@@ -613,7 +543,7 @@ and private planContext
     (walk: Walk)
     (ctx: ServerRenderContext)
     (nodeId: string)
-    : ElementPlan.PlanContext<obj, ReactElement> =
+    : ElementPlan.PlanContext<obj, Markup> =
     { Sources = ctx.Sources
       Csp = ctx.Policy.Csp
       Collector = Some ctx.Styles
@@ -628,7 +558,7 @@ and private renderCustom
     (props: Map<string, Fuaran.Core.JVal>)
     (contentHash: ContentHash option)
     (exposedNodeIds: string list)
-    : ReactElement =
+    : Markup =
     // Unregistered placeholder — identical labelled shape to the client's
     // unregistered Custom path (parity).
     //
@@ -639,25 +569,27 @@ and private renderCustom
     // path is untouched is not a courtesy: it is what makes the obligation
     // safe to declare on a kind every roster host already renders.
     let identityOnly () =
-        Html.div
-            [ prop.className (Css.customPlaceholder moduleId componentId)
-              prop.custom ("data-fuaran-custom-module", moduleId)
-              prop.custom ("data-fuaran-custom-component", componentId)
-              prop.text (sprintf "[fuaran:custom %s.%s]" moduleId componentId) ]
+        Markup.textElement
+            "div"
+            [ "class", Css.customPlaceholder moduleId componentId
+              "data-fuaran-custom-module", moduleId
+              "data-fuaran-custom-component", componentId ]
+            (sprintf "[fuaran:custom %s.%s]" moduleId componentId)
 
     let carded (described: Fuaran.UI.CardPlaceholder) =
         let summary =
             match described.Summary with
-            | Some s -> [ Html.div [ prop.className "fuaran-custom-summary"; prop.text s ] ]
+            | Some s -> [ Markup.textElement "div" [ "class", "fuaran-custom-summary" ] s ]
             | None -> []
 
         let props =
             match described.PropLines with
             | [] -> []
             | lines ->
-                [ Html.ul
-                      [ prop.className Css.Class.CustomProps
-                        prop.children (lines |> List.map (fun line -> Html.li [ prop.text line ])) ] ]
+                [ Markup.element
+                      "ul"
+                      [ "class", Css.Class.CustomProps ]
+                      (lines |> List.map (Markup.textElement "li" [])) ]
 
         // The node's own prop bag, judged against the card. This is the half a
         // labelling pass alone would miss: a foreign host can now say the node
@@ -668,21 +600,21 @@ and private renderCustom
             match described.Validation.Defects with
             | [] -> []
             | ds ->
-                [ Html.ul
-                      [ prop.className "fuaran-custom-defects"
-                        prop.children (ds |> List.map (fun d -> Html.li [ prop.text d.Message ])) ] ]
+                [ Markup.element
+                      "ul"
+                      [ "class", "fuaran-custom-defects" ]
+                      (ds |> List.map (fun d -> Markup.textElement "li" [] d.Message)) ]
 
-        Html.div
-            [ prop.className (Css.customPlaceholder moduleId componentId)
-              prop.custom ("data-fuaran-custom-module", moduleId)
-              prop.custom ("data-fuaran-custom-component", componentId)
-              prop.custom ("data-fuaran-custom-card", Fuaran.UI.CustomCard.verdictMarker described.HashVerdict)
-              prop.children (
-                  [ Html.div [ prop.className Css.Class.CustomLabel; prop.text described.Label ] ]
-                  @ summary
-                  @ props
-                  @ defects
-              ) ]
+        Markup.element
+            "div"
+            [ "class", Css.customPlaceholder moduleId componentId
+              "data-fuaran-custom-module", moduleId
+              "data-fuaran-custom-component", componentId
+              "data-fuaran-custom-card", Fuaran.UI.CustomCard.verdictMarker described.HashVerdict ]
+            ([ Markup.textElement "div" [ "class", Css.Class.CustomLabel ] described.Label ]
+             @ summary
+             @ props
+             @ defects)
 
     let placeholder () =
         match ctx.Cards.TryFind(moduleId, componentId) with
@@ -745,12 +677,11 @@ and private renderCustom
         match outcome with
         | Some HashStrictness.StrictReplay
         | Some HashStrictness.Enforced ->
-            Html.div
-                [ prop.className (Css.customHashMismatch moduleId componentId)
-                  prop.custom ("data-fuaran-custom-hash-mismatch", "strict")
-                  prop.text (
-                      sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId
-                  ) ]
+            Markup.textElement
+                "div"
+                [ "class", Css.customHashMismatch moduleId componentId
+                  "data-fuaran-custom-hash-mismatch", "strict" ]
+                (sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId)
         | advisory ->
             // The registered closure is a host trust boundary — it escapes its
             // own output; the server does not sanitize it (same posture as the
@@ -765,22 +696,16 @@ and private renderCustom
                 | [] -> []
                 | ids ->
                     let joined = ids |> String.concat " "
-                    [ prop.custom ("data-fuaran-exposed-node-ids", joined) ]
+                    [ "data-fuaran-exposed-node-ids", joined ]
 
             let advisoryAttr =
                 match advisory with
-                | Some HashStrictness.AdvisoryWarning ->
-                    [ prop.custom ("data-fuaran-custom-hash-mismatch", "advisory") ]
+                | Some HashStrictness.AdvisoryWarning -> [ "data-fuaran-custom-hash-mismatch", "advisory" ]
                 | _ -> []
 
             match exposedAttr @ advisoryAttr with
             | [] -> body
-            | attrs ->
-                Html.div (
-                    [ prop.className (Css.customWrapper moduleId componentId) ]
-                    @ attrs
-                    @ [ prop.children [ body ] ]
-                )
+            | attrs -> Markup.element "div" (("class", Css.customWrapper moduleId componentId) :: attrs) [ body ]
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 
@@ -891,22 +816,23 @@ let mkContextInScope
 let mkContext (sources: BindingResolver.BindingSources) (node: Node<obj>) : ServerRenderContext =
     mkContextWith Registry.empty sources node
 
-/// Render a `Node<obj>` tree to a `ReactElement` for host composition (e.g.
-/// embedding inside a host's own ViewEngine document layout). The host calls
-/// `Feliz.ViewEngine.Render.htmlView` (or `htmlDocument`) when ready.
-let renderToElement (sources: BindingResolver.BindingSources) (node: Node<obj>) : ReactElement =
+/// Render a `Node<obj>` tree to server `Markup` for host composition (e.g.
+/// embedding inside a host's own document layout). The host calls
+/// `Markup.toHtml` when ready; a host composing with another HTML library
+/// places that string in its own document as raw markup.
+let renderToElement (sources: BindingResolver.BindingSources) (node: Node<obj>) : Markup =
     renderNode Walk.root (mkContext sources node) node
 
 /// Render a `Node<obj>` tree to an HTML string on plain .NET. The body-fragment
 /// HTML only — the host owns `<html>` / `<head>` / meta / the reference CSS.
 let render (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
-    Render.htmlView (renderToElement sources node)
+    Markup.toHtml (renderToElement sources node)
 
 /// Phase 1812 — the BEHIND reader's render (WIRE_FORMAT §15.3): a `Rendered`
 /// view (the node, or the `fallback` lifted from an `Unknown`) renders as any
 /// node does; a `Placeholder` is the labelled degrade, byte-identical to the
 /// client's. Produce the view with `Fuaran.UI.Ops.JsonDecode.BehindReader.view`.
-let renderBehindToElement (sources: BindingResolver.BindingSources) (view: BehindView<obj>) : ReactElement =
+let renderBehindToElement (sources: BindingResolver.BindingSources) (view: BehindView<obj>) : Markup =
     match view with
     | BehindView.Rendered node -> renderToElement sources node
     | BehindView.Placeholder(kind, required) ->
@@ -915,17 +841,18 @@ let renderBehindToElement (sources: BindingResolver.BindingSources) (view: Behin
             | Some p -> sprintf "needs %s" p
             | None -> sprintf "unknown kind %s" kind
 
-        Html.div
-            [ prop.className Css.Class.UnknownPlaceholder
-              prop.custom ("data-fuaran-kind", kind)
+        Markup.textElement
+            "div"
+            [ "class", Css.Class.UnknownPlaceholder
+              "data-fuaran-kind", kind
               match required with
-              | Some p -> prop.custom ("data-fuaran-requires", p)
-              | None -> ()
-              prop.text label ]
+              | Some p -> "data-fuaran-requires", p
+              | None -> () ]
+            label
 
 /// `renderBehindToElement` to an HTML string.
 let renderBehind (sources: BindingResolver.BindingSources) (view: BehindView<obj>) : string =
-    Render.htmlView (renderBehindToElement sources view)
+    Markup.toHtml (renderBehindToElement sources view)
 
 /// Render a no-dynamic-bindings `Node<obj>` tree to an HTML string — the common
 /// static-SSR case. Bakes in `BindingResolver.empty`, so a host with no dynamic
@@ -940,7 +867,7 @@ let renderWith
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode Walk.root (mkContextWith customs sources node) node)
+    Markup.toHtml (renderNode Walk.root (mkContextWith customs sources node) node)
 
 /// `renderWith` under an EXPLICIT destination policy (Phase 1026) — the named
 /// opt-out for a host composing this tier without going through the Giraffe
@@ -951,7 +878,7 @@ let renderWithEgress
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode Walk.root (mkContextWithEgress egressPolicy customs sources node) node)
+    Markup.toHtml (renderNode Walk.root (mkContextWithEgress egressPolicy customs sources node) node)
 
 /// Render under a named render SCOPE with a host-supplied registry (Phase 783).
 /// Only renderers registered for `scope` are reachable from the tree.
@@ -961,7 +888,7 @@ let renderWithInScope
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode Walk.root (mkContextInScope scope customs sources node) node)
+    Markup.toHtml (renderNode Walk.root (mkContextInScope scope customs sources node) node)
 
 /// `renderWith` under a chart-provenance scope this render DECLARES (Phase
 /// 2068): every lowered chart in the tree is stamped under `provenance`,
@@ -975,7 +902,7 @@ let renderWithChartProvenance
     : string =
     let ctx = mkContextWith customs sources node
 
-    Render.htmlView (
+    Markup.toHtml (
         renderNode
             Walk.root
             { ctx with
@@ -992,7 +919,7 @@ let renderWithCards
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (renderNode Walk.root (mkContextWithCards cards customs sources node) node)
+    Markup.toHtml (renderNode Walk.root (mkContextWithCards cards customs sources node) node)
 
 /// `renderWith` under an explicit render POLICY (Phase 2749): the whole
 /// `RenderPolicy` record, for a posture that has no named entry of its own —
@@ -1006,26 +933,26 @@ let renderWithPolicy
     (node: Node<obj>)
     : string =
     let ctx = mkContextWith customs sources node
-    Render.htmlView (renderNode Walk.root { ctx with Policy = policy } node)
+    Markup.toHtml (renderNode Walk.root { ctx with Policy = policy } node)
 
 /// A `<style>` element carrying the Phase 12.K `Theme` → CSS-variable `:root`
 /// projection — parity with the client `themeStyleElement`. The host mounts
 /// this once (typically in `<head>`); the renderer's class vocabulary keys off
 /// these variables.
-let themeStyleElement (theme: Theme) : ReactElement =
-    Html.style [ prop.dangerouslySetInnerHTML (Theme.toCss theme) ]
+let themeStyleElement (theme: Theme) : Markup =
+    Markup.rawElement "style" [] (Theme.toCss theme)
 
 /// `themeStyleElement` under an explicit CSP posture (Phase 1545). Under
 /// `Csp.Strict nonce` the element carries `nonce="…"`, so a host serving
 /// `style-src 'nonce-…'` can inject the theme without `'unsafe-inline'`; under
 /// `Permissive` it is `themeStyleElement`, byte for byte.
 ///
-/// The nonce lands in an ATTRIBUTE value and is emitted through ViewEngine, so
+/// The nonce lands in an ATTRIBUTE value and is emitted through `Markup`, so
 /// it is escaped for free — nothing here has to handle a host's own string
 /// beyond placing it.
-let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
+let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : Markup =
     match Csp.nonce csp with
-    | Some n -> Html.style [ prop.custom ("nonce", n); prop.dangerouslySetInnerHTML (Theme.toCss theme) ]
+    | Some n -> Markup.rawElement "style" [ "nonce", n ] (Theme.toCss theme)
     | None -> themeStyleElement theme
 
 /// Render the theme `:root` style block followed by the tree's body HTML, as a
@@ -1042,7 +969,7 @@ let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
 /// serving several themes from one process lowers per call with
 /// `Charts.lowerWithStyle` and `Charts.chartStyleOfTheme` instead.
 let renderWithTheme (theme: Theme) (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
-    Render.htmlView (themeStyleElement theme) + render sources node
+    Markup.toHtml (themeStyleElement theme) + render sources node
 
 // ─── Strict-CSP rendering (Phase 1545) ─────────────────────────────────────
 
@@ -1062,12 +989,12 @@ let collectedStyleHtml (ctx: ServerRenderContext) : string =
     else
         let css = Csp.stylesheetText ctx.Styles.Rules
 
-        let element =
+        let attrs =
             match Csp.nonce ctx.Policy.Csp with
-            | Some n -> Html.style [ prop.custom ("nonce", n); prop.dangerouslySetInnerHTML css ]
-            | None -> Html.style [ prop.dangerouslySetInnerHTML css ]
+            | Some n -> [ "nonce", n ]
+            | None -> []
 
-        Render.htmlView element
+        Markup.toHtml (Markup.rawElement "style" attrs css)
 
 /// Render a tree under an explicit CSP posture, returning the collected
 /// stylesheet followed by the body-fragment HTML.
@@ -1091,7 +1018,7 @@ let renderWithCsp
     (node: Node<obj>)
     : string =
     let ctx = mkContextWithCsp csp customs sources node
-    let body = Render.htmlView (renderNode Walk.root ctx node)
+    let body = Markup.toHtml (renderNode Walk.root ctx node)
     collectedStyleHtml ctx + body
 
 /// `renderWithCsp` with no host Custom-renderer registry — the strict-mode twin
@@ -1111,7 +1038,7 @@ let renderWithThemeAndCsp
     (sources: BindingResolver.BindingSources)
     (node: Node<obj>)
     : string =
-    Render.htmlView (themeStyleElementWithCsp csp theme)
+    Markup.toHtml (themeStyleElementWithCsp csp theme)
     + renderWithCsp csp Registry.empty sources node
 
 // ─── Served-stylesheet fingerprint (Phase 433) ─────────────────────────────

@@ -7,8 +7,10 @@ module Fuaran.UI.Renderer.Server.Registry
 //  (engraved SVG, bespoke widgets, server-rendered charts) into a Fuaran tree.
 //  The client renderer maps `(moduleId, componentId, props)` to a Feliz
 //  `ReactElement` via its `CustomRendererRegistry`; this is the **HTML-string
-//  twin** for the server renderer — a registry mapping the same key to a
-//  `Feliz.ViewEngine` element.
+//  twin** for the server renderer — a registry mapping the same key to server
+//  `Markup` (Phase 2515; it held a `Feliz.ViewEngine` element before). A host
+//  renderer written against another HTML library registers through
+//  `Markup.raw`, which takes that library's serialised output as it stands.
 //
 //  Fuaran ships **the seam**; the domain renderers live in the consumer app,
 //  never in the language tier (FGP 6 / the cultural-posture invariant). The
@@ -18,12 +20,11 @@ module Fuaran.UI.Renderer.Server.Registry
 //  boundary").
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.Core
 open Fuaran.UI.Types
 
-/// A server-side Custom renderer: the node's `props` → a server HTML node.
-type ServerCustomRenderer = Map<string, JVal> -> ReactElement
+/// A server-side Custom renderer: the node's `props` → server markup.
+type ServerCustomRenderer = Map<string, JVal> -> Markup
 
 /// Registry of server Custom renderers keyed on `(scope, moduleId, componentId)`,
 /// parallel to the client `CustomRendererRegistry`. `Hashes` optionally records
@@ -108,10 +109,10 @@ let registerWithHash
 /// bounded-escape verification.
 let registerContract
     (contract: Fuaran.UI.CustomContract<'Props>)
-    (render: 'Props -> ReactElement)
+    (render: 'Props -> Markup)
     (reg: ServerCustomRendererRegistry)
     : ServerCustomRendererRegistry =
-    let wrapped (props: Map<string, JVal>) : ReactElement =
+    let wrapped (props: Map<string, JVal>) : Markup =
         match contract.Decode props with
         | Ok p -> render p
         | Error e ->
@@ -122,22 +123,20 @@ let registerContract
                 e.Key
                 e.Message
 
-            Html.div
-                [ prop.className (
-                      sprintf
-                          "fuaran-kind-custom-placeholder fuaran-custom-decode-error fuaran-custom-%s-%s"
-                          contract.ModuleId
-                          contract.ComponentId
-                  )
-                  prop.custom ("data-fuaran-custom-decode-error", e.Key)
-                  prop.text (
-                      sprintf
-                          "[fuaran:custom %s.%s — decode error (key '%s'): %s]"
-                          contract.ModuleId
-                          contract.ComponentId
-                          e.Key
-                          e.Message
-                  ) ]
+            Markup.textElement
+                "div"
+                [ "class",
+                  sprintf
+                      "fuaran-kind-custom-placeholder fuaran-custom-decode-error fuaran-custom-%s-%s"
+                      contract.ModuleId
+                      contract.ComponentId
+                  "data-fuaran-custom-decode-error", e.Key ]
+                (sprintf
+                    "[fuaran:custom %s.%s — decode error (key '%s'): %s]"
+                    contract.ModuleId
+                    contract.ComponentId
+                    e.Key
+                    e.Message)
 
     registerWithHash contract.ModuleId contract.ComponentId contract.Hash.Hash wrapped reg
 
@@ -187,7 +186,7 @@ let tryHash (moduleId: string) (componentId: string) (reg: ServerCustomRendererR
 /// when the node's content hash is to be verified; `registerDomMount` and
 /// `registerDomMountInScope` cover the unhashed registrations.
 let domMountFallback (fallback: Map<string, JVal> -> string) : ServerCustomRenderer =
-    fun props -> Html.div [ prop.text (fallback props) ]
+    fun props -> Markup.textElement "div" [] (fallback props)
 
 /// Register a DOM mount's fallback for `(moduleId, componentId)` in the ROOT
 /// render scope (Phase 2513).

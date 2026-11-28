@@ -25,7 +25,6 @@ namespace Fuaran.UI.Giraffe
 // ============================================================================
 
 open Giraffe
-open Feliz.ViewEngine
 open Microsoft.AspNetCore.Http
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -170,7 +169,7 @@ module Handlers =
     /// or empty when no theme is configured.
     let private themeBlock (opts: FuaranGiraffeOptions) : string =
         match opts.Theme with
-        | Some theme -> Render.htmlView (Server.themeStyleElement theme)
+        | Some theme -> Fuaran.UI.Renderer.Server.Markup.toHtml (Server.themeStyleElement theme)
         | None -> ""
 
     /// Deterministic theme-CSS contribution to the ETag (empty when no theme).
@@ -238,7 +237,8 @@ module Handlers =
             // Body fragment + the Phase 143 embedded wire-tree `<script>` the
             // client hydrate mount decodes. (renderWith already emitted the
             // fragment with the Custom registry; append the hydrate payload.)
-            fragment + Render.htmlView (ServerHydration.embeddedTreeElement node)
+            fragment
+            + Fuaran.UI.Renderer.Server.Markup.toHtml (ServerHydration.embeddedTreeElement node)
         | Islands ->
             // Static page with per-island boundary wrappers + one embedded
             // hydrate `<script>` per `Node.asIsland` subtree (Phase 163). Zero

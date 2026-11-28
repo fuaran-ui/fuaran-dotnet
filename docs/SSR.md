@@ -1,7 +1,8 @@
 ﻿# Server-side rendering (`Fuaran.UI.Renderer.Server`)
 
 `Fuaran.UI.Renderer.Server` (Phase 140) turns a `Node<'Msg>` tree into an HTML
-**string** on plain .NET – no React, no Fable – via `Feliz.ViewEngine`. A
+**string** on plain .NET – no React, no Fable, no client DSL – through its own
+string emitter, `Markup`, over the shared `ElementPlan` (Phase 2515). A
 Giraffe / ASP.NET host server-renders Fuaran chrome for SEO surfaces with no
 client-runtime requirement and no visual degradation; the same tree later
 hydrates client-side (Phase 143).
@@ -28,8 +29,9 @@ let staticHtml : string = Render.renderStatic tree   // = render BindingResolver
 // With the Theme :root variable block prepended:
 let withTheme : string = Render.renderWithTheme Defaults.theme BindingResolver.empty tree
 
-// As a ViewEngine element, to compose into a host's own document layout:
-let element = Render.renderToElement BindingResolver.empty tree
+// As server Markup, to compose into a host's own document layout:
+let element : Markup = Render.renderToElement BindingResolver.empty tree
+let elementHtml : string = Markup.toHtml element
 ```
 
 `Render.render` returns **body-fragment HTML only**. The document shell
@@ -216,8 +218,9 @@ what the document said to hide is a lie about what it contains.
 
 `NodeKind.Custom` is the language's bounded escape hatch. The server renderer
 gives it the HTML-string twin of the client's `CustomRendererRegistry`: a
-registry mapping `(moduleId, componentId)` to a `Map<string, JVal> ->
-Feliz.ViewEngine element`. **Fuaran ships the seam; the domain renderers live in
+registry mapping `(moduleId, componentId)` to a `Map<string, JVal> -> Markup`
+(a `Feliz.ViewEngine` element before Phase 2515; such a renderer registers through
+`Markup.raw`). **Fuaran ships the seam; the domain renderers live in
 the consumer app, never in the language tier.**
 
 ```fsharp
@@ -984,7 +987,7 @@ the cache off — the second user's browser still won a `304` against the first
 user's ETag.
 
 **Injection safety** follows the document-shell boundary above: text fields
-HTML-escape via `Feliz.ViewEngine`; URL fields (`Canonical`, stylesheet hrefs,
+HTML-escape via the server renderer's `Markup`; URL fields (`Canonical`, stylesheet hrefs,
 script srcs) route through `Renderer.Sanitize.sanitizeUrlOrBlank`; **JSON-LD is
 the one sanctioned raw-JSON injection point** (host-trusted) and is script-escaped
 exactly like the Phase 143 hydrate payload so it cannot break out of `<script>`.

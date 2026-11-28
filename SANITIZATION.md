@@ -233,7 +233,7 @@ React's `prop.text` (text content), `prop.value`, `prop.placeholder`, and the st
 
 ## Attribute-name injection (Phase 788)
 
-Every escaping surface in this document escapes attribute *values*. Nothing escapes an attribute *name*: React's attribute encoder escapes the value it is given, and on the server `Feliz.ViewEngine`'s `Interop.mkAttr` does the same while `ViewBuilder.buildElement` writes `" " + key + "=\"" + value + "\""` with the key verbatim.
+Every escaping surface in this document escapes attribute *values*. Nothing escapes an attribute *name*: React's attribute encoder escapes the value it is given, and on the server the `Markup` emitter (Phase 2515; `Feliz.ViewEngine` before it, which wrote the same bytes) does the same while writing `" " + name + "=\"" + value + "\""` with the name verbatim.
 
 That asymmetry is not an oversight in either library — **HTML has no escape for an illegal character in an attribute name.** A space inside a name simply starts a *new* attribute and an `=` starts its value, so a key of `data-x=1 onmouseover=alert(document.domain) z` is not a mangled attribute name; it is three attributes, one of them a live event handler. The only sound response is to drop the entry.
 
@@ -250,7 +250,7 @@ Two scope notes, so the posture is neither overstated nor understated:
 
 **This is by design.** The custom-renderer registry is a host extension surface for renderers the language tier doesn't ship (a Fuaran-native Mermaid renderer, a Lottie wrapper, a host-specific business widget). The closure is consumer-authored F# code, not AI-emitted markup. Wire-decode (`Fuaran.UI.Ops.JsonDecode`) cannot construct a closure — `NodeKind.Custom` carries only `moduleId` / `componentId` / `props`, and the closure is looked up at render time from the host-controlled registry.
 
-**The same boundary applies to the server renderer (Phase 141).** `Fuaran.UI.Renderer.Server`'s `Registry.register (moduleId) (componentId) (closure)` registers a `Map<string, JsonValue> -> Feliz.ViewEngine` element closure; the server `Custom` arm invokes it verbatim and does NOT police its output — identical posture to the client `RegisterCustomRenderer`. The host owns + escapes its own server HTML. The bounded-escape `ContentHash` (Phase 70) is verified on the server path per its `HashStrictness` (a `StrictReplay` / `Enforced` mismatch routes to a labelled error placeholder and does NOT invoke the drifted renderer). See `docs/SSR.md` "Custom-renderer registry".
+**The same boundary applies to the server renderer (Phase 141).** `Fuaran.UI.Renderer.Server`'s `Registry.register (moduleId) (componentId) (closure)` registers a `Map<string, JsonValue> -> Markup` closure (a `Feliz.ViewEngine` element before Phase 2515); the server `Custom` arm invokes it verbatim and does NOT police its output — identical posture to the client `RegisterCustomRenderer`. The host owns + escapes its own server HTML. The bounded-escape `ContentHash` (Phase 70) is verified on the server path per its `HashStrictness` (a `StrictReplay` / `Enforced` mismatch routes to a labelled error placeholder and does NOT invoke the drifted renderer). See `docs/SSR.md` "Custom-renderer registry".
 
 ### What the registry scoping and `ContentHash` do and do NOT protect (Phase 783)
 
@@ -577,7 +577,7 @@ structured data is unchanged and only the HTML parser is disarmed.
 ## `DocumentShell` attribute NAMES (Phase 1523, the 788 class ported)
 
 `Fuaran.UI.Giraffe`'s `Document.render` builds the `<html>` and `<body>` open tags by string
-concatenation rather than through ViewEngine, so the attribute-name gate the rest of the renderer
+concatenation rather than through the element builder, so the attribute-name gate the rest of the renderer
 gets for free had to be applied by hand — and was not. The VALUE side was escaped; the NAME was
 written verbatim, and HTML has no escape for an illegal character in an attribute name: a space
 inside one simply starts a NEW attribute and an `=` starts its value. A `HtmlAttributes` key of

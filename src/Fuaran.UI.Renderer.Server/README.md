@@ -1,8 +1,8 @@
 # Fuaran.UI.Renderer.Server
 
 The **server-side renderer** for the Fuaran UI language. Turns a `Node<'Msg>`
-tree into an HTML **string** on plain .NET — no React, no Fable — via
-`Feliz.ViewEngine`, so a Giraffe / ASP.NET host can server-render Fuaran chrome
+tree into an HTML **string** on plain .NET — no React, no Fable, no client DSL —
+through its own string emitter (`Markup`), so a Giraffe / ASP.NET host can server-render Fuaran chrome
 for SEO surfaces with no client-runtime requirement and no visual degradation.
 
 The emitted **class names + ARIA attributes** match the Feliz client renderer
@@ -24,7 +24,7 @@ let html = Render.render BindingResolver.empty tree
 // With the Theme :root variable block prepended:
 let withTheme = Render.renderWithTheme Defaults.theme BindingResolver.empty tree
 
-// Or compose into a host's own ViewEngine document:
+// Or compose into a host's own document (`Markup.toHtml element` when ready):
 let element = Render.renderToElement BindingResolver.empty tree
 ```
 

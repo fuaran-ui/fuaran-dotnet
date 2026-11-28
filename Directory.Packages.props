@@ -116,12 +116,11 @@
          Fuaran.UI.Renderer.Feliz adapter, the samples and the Fable test hosts
          that author in it reference it themselves. -->
     <PackageVersion Include="Feliz" Version="3.3.3" />
-    <!-- Server-side rendering (Phase 140). Feliz.ViewEngine emits HTML strings
-         on plain .NET (no React / Fable) with the same Feliz-shaped API as the
-         client renderer, so class/attribute emission stays near-identical;
-         Markdig is the real server-side markdown processor (replacing the
-         degraded <pre> fallback). Consumed only by Fuaran.UI.Renderer.Server. -->
-    <PackageVersion Include="Feliz.ViewEngine" Version="1.0.3" />
+    <!-- Server-side rendering (Phase 140). Markdig was the server-side markdown
+         processor until the shared deterministic renderer retired it (Phase 292);
+         no project references it now. The server renderer's HTML emitter is its
+         own since Phase 2515, which removed the Feliz.ViewEngine pin with its
+         last consumer. -->
     <PackageVersion Include="Markdig" Version="0.37.0" />
     <!-- Sqlite — consumed by Fuaran.UI.OpStream.Sqlite for the durable
          op-stream sink. Microsoft's official ADO.NET provider so the

@@ -37,7 +37,6 @@ module Fuaran.UI.Renderer.Server.Tests.SsrParityTests
 // ============================================================================
 
 open Expecto
-open Feliz.ViewEngine
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer

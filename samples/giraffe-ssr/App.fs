@@ -14,11 +14,11 @@ module GiraffeSsr.Sample.App
 //  Neutral domain, generic "consumer app" framing (OSS boundary).
 // ============================================================================
 
-open Feliz.ViewEngine
 open Giraffe
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Giraffe
+open Fuaran.UI.Renderer.Server
 
 // ─── A host Custom renderer as a typed CONTRACT (Phase 164) ──────────────────
 //
@@ -57,13 +57,13 @@ let private sparklineContract: CustomContract<Sparkline> =
         []
         HashStrictness.StrictReplay
 
-let private sparklineRenderer (p: Sparkline) : ReactElement =
+let private sparklineRenderer (p: Sparkline) : Markup =
     let svg =
         sprintf
             "<svg viewBox=\"0 0 100 30\" width=\"100\" height=\"30\" role=\"img\" aria-label=\"trend\"><polyline points=\"%s\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg>"
             p.Points
 
-    Html.div [ prop.className "sample-sparkline"; prop.dangerouslySetInnerHTML svg ]
+    Markup.rawElement "div" [ "class", "sample-sparkline" ] svg
 
 let private customs =
     Fuaran.UI.Renderer.Server.Registry.empty

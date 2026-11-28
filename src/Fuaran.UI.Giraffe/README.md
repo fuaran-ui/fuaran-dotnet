@@ -87,7 +87,7 @@ had one.
 JSON-LD, stylesheet + script refs); the wrapper plumbing is the library's.
 
 Injection safety follows `SANITIZATION.md`: text fields HTML-escape via
-`Feliz.ViewEngine`; URL fields route through `Renderer.Sanitize.sanitizeUrlOrBlank`
+the server renderer's `Markup`; URL fields route through `Renderer.Sanitize.sanitizeUrlOrBlank`
 (a `javascript:` href becomes `about:blank`); **JSON-LD is the one sanctioned
 raw-JSON injection point** (host-trusted) and is `<`/`>`/`&`-escaped for
 `<script>` embedding so it cannot break out of the element.

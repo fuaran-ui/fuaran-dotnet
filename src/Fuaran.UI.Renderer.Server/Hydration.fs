@@ -24,7 +24,6 @@ module Fuaran.UI.Renderer.Server.Hydration
 //  server encoded.
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 open Fuaran.UI.OpStream.Abstractions
@@ -42,15 +41,16 @@ let internal escapeForScript (json: string) : string =
 
 /// The embedded-tree `<script type="application/json">` element carrying the
 /// canonical wire-format JSON, keyed to the render root's stable id.
-let embeddedTreeElement (node: Node<obj>) : ReactElement =
+let embeddedTreeElement (node: Node<obj>) : Markup =
     let rootId = node.Id
     let json = CanonicalJson.encodeNode node |> escapeForScript
 
-    Html.script
-        [ prop.custom ("type", "application/json")
-          prop.id (scriptId rootId)
-          prop.custom ("data-fuaran-hydrate-root", rootId)
-          prop.dangerouslySetInnerHTML json ]
+    Markup.rawElement
+        "script"
+        [ "type", "application/json"
+          "id", scriptId rootId
+          "data-fuaran-hydrate-root", rootId ]
+        json
 
 /// Render a **hydration-ready** HTML string: the body-fragment HTML plus the
 /// embedded wire-format tree as a `<script type="application/json">` payload the
@@ -58,7 +58,7 @@ let embeddedTreeElement (node: Node<obj>) : ReactElement =
 /// React `hydrateRoot`. The host places this where it wants the hydratable
 /// surface; the document shell + reference CSS stay host-owned.
 let renderHydratable (sources: BindingResolver.BindingSources) (node: Node<obj>) : string =
-    Render.render sources node + Render.htmlView (embeddedTreeElement node)
+    Render.render sources node + Markup.toHtml (embeddedTreeElement node)
 
 // ─── Islands (partial hydration, Phase 163) ─────────────────────────────────
 //
@@ -100,15 +100,16 @@ let rec private collectIslands (node: Node<obj>) : (string * Node<obj>) list =
 /// The per-island embedded `<script type="application/json">` payload carrying
 /// the island subtree's wire tree (marker stripped — `ExtraAttributes` is
 /// wire-omitted anyway, so the payload is the inert inner content).
-let private islandScriptElement (islandId: string) (node: Node<obj>) : ReactElement =
+let private islandScriptElement (islandId: string) (node: Node<obj>) : Markup =
     let json =
         CanonicalJson.encodeNode (Fuaran.UI.Node.stripIsland node) |> escapeForScript
 
-    Html.script
-        [ prop.custom ("type", "application/json")
-          prop.id (islandScriptId islandId)
-          prop.custom ("data-fuaran-island-payload", islandId)
-          prop.dangerouslySetInnerHTML json ]
+    Markup.rawElement
+        "script"
+        [ "type", "application/json"
+          "id", islandScriptId islandId
+          "data-fuaran-island-payload", islandId ]
+        json
 
 /// Render the page statically with per-island boundary markers (the renderer
 /// wraps each `Node.asIsland` subtree in `<div data-fuaran-island>`) plus one
@@ -119,7 +120,7 @@ let renderWithIslands (sources: BindingResolver.BindingSources) (node: Node<obj>
 
     let scripts =
         collectIslands node
-        |> List.map (fun (id, islandNode) -> Render.htmlView (islandScriptElement id islandNode))
+        |> List.map (fun (id, islandNode) -> Markup.toHtml (islandScriptElement id islandNode))
         |> String.concat ""
 
     staticHtml + scripts
@@ -140,7 +141,7 @@ let renderWithIslandsAndEgress
 
     let scripts =
         collectIslands node
-        |> List.map (fun (id, islandNode) -> Render.htmlView (islandScriptElement id islandNode))
+        |> List.map (fun (id, islandNode) -> Markup.toHtml (islandScriptElement id islandNode))
         |> String.concat ""
 
     staticHtml + scripts

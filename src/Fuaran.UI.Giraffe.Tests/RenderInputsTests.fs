@@ -266,7 +266,8 @@ let tests =
 
               let registered =
                   ServerRegistry.empty
-                  |> ServerRegistry.register "mod" "widget" (fun _ -> Feliz.ViewEngine.Html.div [])
+                  |> ServerRegistry.register "mod" "widget" (fun _ ->
+                      Fuaran.UI.Renderer.Server.Markup.element "div" [] [])
 
               let a =
                   etagOf (runHandler (fuaranPage (withCustoms ServerRegistry.empty) shell tree) ignore)
@@ -279,13 +280,13 @@ let tests =
           test "customsIdentity is order-independent and hash-aware" {
               let r1 =
                   ServerRegistry.empty
-                  |> ServerRegistry.register "a" "x" (fun _ -> Feliz.ViewEngine.Html.div [])
-                  |> ServerRegistry.register "b" "y" (fun _ -> Feliz.ViewEngine.Html.div [])
+                  |> ServerRegistry.register "a" "x" (fun _ -> Fuaran.UI.Renderer.Server.Markup.element "div" [] [])
+                  |> ServerRegistry.register "b" "y" (fun _ -> Fuaran.UI.Renderer.Server.Markup.element "div" [] [])
 
               let r2 =
                   ServerRegistry.empty
-                  |> ServerRegistry.register "b" "y" (fun _ -> Feliz.ViewEngine.Html.div [])
-                  |> ServerRegistry.register "a" "x" (fun _ -> Feliz.ViewEngine.Html.div [])
+                  |> ServerRegistry.register "b" "y" (fun _ -> Fuaran.UI.Renderer.Server.Markup.element "div" [] [])
+                  |> ServerRegistry.register "a" "x" (fun _ -> Fuaran.UI.Renderer.Server.Markup.element "div" [] [])
 
               Expect.equal
                   (RenderInputs.customsIdentity r1)
