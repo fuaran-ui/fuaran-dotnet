@@ -47,6 +47,9 @@
     "design-seam-reject": "covered",
     "design-seam-round-trip": "covered",
     "devtools-relay": "covered",
+    "diff/keptMember": {
+      "pending": "the reference keeps undeclared members (WIRE_FORMAT 15.8); its suite does not yet run this family"
+    },
     "diff/treeDiff": {
       "pending": "TreeOpDiffEquivalenceTests runs every goldens pair and asserts Apply(Diff(before, after), before) == after, and does not yet compare its own op-scripts with the pinned ones"
     },
@@ -59,6 +62,9 @@
     "formatting": "covered",
     "grid-edit": "covered",
     "grid-window-writer": "covered",
+    "kept-member": {
+      "pending": "the reference keeps undeclared members (WIRE_FORMAT 15.8); its suite does not yet run this family"
+    },
     "laws/canonicalFormLaws": {
       "pending": "the reference codec is generated for the UI vocabulary alone and reads no other, so its suite does not run these vectors over the fixture vocabulary they carry; the UI vocabulary declares no presence condition or alias list until Phase 2340 (WIRE_FORMAT 3.6)"
     },

@@ -37,6 +37,8 @@
          generator that emits both from it and the vocabulary. -->
     <Compile Include="AuthoringDialect.fs" />
     <Compile Include="AuthoringMirrors.fs" />
+    <!-- Phase 2880: renders src/Fuaran.UI.Ops/WireShapes.fs, the declared-member table. -->
+    <Compile Include="WireShapes.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />

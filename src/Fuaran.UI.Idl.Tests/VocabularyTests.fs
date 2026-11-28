@@ -81,6 +81,9 @@ let private generatedPath = path [ "src"; "Fuaran.UI"; "Generated.fs" ]
 let private analyzerVocabularyPath =
     path [ "src"; "Fuaran.UI.Analyzers"; "VisualBasic"; "Vocabulary.Generated.cs" ]
 
+// Phase 2880 — the declared-member table the decoder keeps undeclared members against.
+let private wireShapesPath = path [ "src"; "Fuaran.UI.Ops"; "WireShapes.fs" ]
+
 let private enumMapPath =
     path [ "src"; "Fuaran.UI.CSharp"; "Facade"; "EnumMap.Generated.cs" ]
 
@@ -241,6 +244,13 @@ let tests =
           // mirrors that test pins compared against the vocabulary after the fact;
           // they are emitted now, and the dialect's divergences are generator input
           // (`AuthoringDialect.fs`). A refusal lists every declaration to fix.
+          // Phase 2880 — the declared-member table, FROM BYTES like `Generated.fs`.
+          testCase "WireShapes.fs is what the committed idl.json renders" (fun _ ->
+              expectArtifact
+                  "src/Fuaran.UI.Ops/WireShapes.fs"
+                  wireShapesPath
+                  (Fuaran.UI.WireShapes.render (read idlPath)))
+
           testCase "the authoring mirrors are what the committed vocabulary regenerates" (fun _ ->
               let idl =
                   match Artifact.parse (read idlPath) with

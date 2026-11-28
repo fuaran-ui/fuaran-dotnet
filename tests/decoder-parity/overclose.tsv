@@ -40,4 +40,4 @@ intended-19	ok 4a5551bdd1f41f32 1356	steps=105 units=1391 nesting=13 parses=1	ok
 intended-20	ok d11fdf7d3e60377a 1334	steps=104 units=1369 nesting=13 parses=1	ok d11fdf7d3e60377a 1334	recovered=	refused=	ok d11fdf7d3e60377a 1334
 intended-23	ok 742c736bab7cf6ff 1307	steps=103 units=1342 nesting=13 parses=1	ok 742c736bab7cf6ff 1307	recovered=	refused=	ok 742c736bab7cf6ff 1307
 intended-27	ok e3cbdacf2cf74a20 1404	steps=107 units=1439 nesting=13 parses=1	ok e3cbdacf2cf74a20 1404	recovered=	refused=	ok e3cbdacf2cf74a20 1404
-leftmost-legal-14	ok 4acd35acc32f1778 1402	steps=112 units=1612 nesting=13 parses=1	ok 4acd35acc32f1778 1402	recovered=	refused=	ok 4acd35acc32f1778 1402
+leftmost-legal-14	ok 29e8bf5190288104 1560	steps=112 units=1612 nesting=13 parses=1	ok 29e8bf5190288104 1560	recovered=	refused=	ok 29e8bf5190288104 1560

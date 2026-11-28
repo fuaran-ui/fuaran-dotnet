@@ -1518,15 +1518,16 @@ let rec private jsonToJValStrict (depth: int) (path: string) (j: Json) : Result<
             |> sequenceAll
             |> Result.map Fuaran.Core.JObj
 
-/// Map a `Fuaran.Core.ColumnError` (the compute codecs' six-code envelope) into this host's
-/// `DecodeError` at `path` — surfaced as `WRONG_TYPE` (the closest host code for a
-/// structurally-parsed but invalid compute sub-tree), with the Core failure as the message.
-/// Phase 2880 — the members of a node's JSON that no decoder read (WIRE_FORMAT §15.8), by
-/// path inside the node. The walk descends only through members that were read, and only
-/// into objects a helper opened; it stops at a child node (its own slot holds its kept
-/// members) and at an object nothing opened (a payload its own slot carries whole). A
-/// member whose value holds a null at any depth is not kept (§15.8 rule 3), and a kept
-/// value is the rule-12 payload of its JSON, so it re-encodes canonically.
+/// Phase 2880 — the members of a node's JSON that its shape does not declare (WIRE_FORMAT
+/// §15.8), by path inside the node. A member is undeclared when the declared-member table
+/// (`WireShapes`, rendered from `idl.json`) does not name it for its object's shape AND no
+/// decoder read it: the table speaks for the positions the generated layer decodes, and the
+/// read log for this decoder's own lenient spellings (an alias, a shorthand), which the IDL
+/// does not list. The walk follows declared and read members only; it stops at a child node
+/// (its own slot holds its kept members), at a value whose shape it cannot name and that no
+/// helper opened (a payload its own slot carries whole), and at a scalar. A member whose value
+/// holds a null at any depth is not kept (§15.8 rule 3); a kept value is the rule-12 payload
+/// of its JSON, so it re-encodes canonically.
 let private keptMembersOf (node: Map<string, Json>) : Fuaran.UI.HostPrelude.KeptMembers =
     match ReadTracker.Current with
     | null -> Fuaran.UI.HostPrelude.KeptMembers.empty
@@ -1538,35 +1539,73 @@ let private keptMembersOf (node: Map<string, Json>) : Fuaran.UI.HostPrelude.Kept
             | JObject m -> m |> Map.exists (fun _ v -> holdsNull v)
             | _ -> false
 
+        let byTag (table: Map<string, (string * WireShapes.Shape) list>) (m: Map<string, Json>) =
+            match Map.tryFind "$type" m with
+            | Some(JString tag) -> Map.tryFind tag table
+            | _ -> None
+
         let kept = ResizeArray<Fuaran.Core.PathSegment list * Fuaran.Core.JVal>()
 
-        let rec object (rev: Fuaran.Core.PathSegment list) (m: Map<string, Json>) =
-            match log.Opened.TryGetValue(box m) with
-            | true, read ->
+        let rec object
+            (rev: Fuaran.Core.PathSegment list)
+            (m: Map<string, Json>)
+            (shape: (string * WireShapes.Shape) list option)
+            =
+            let read =
+                match log.Opened.TryGetValue(box m) with
+                | true, set -> set
+                | _ -> null
+
+            if shape.IsSome || not (isNull read) then
+                let declared = shape |> Option.map Map.ofList
+
                 for KeyValue(k, v) in m do
                     let at = Fuaran.Core.PathSegment.Key k :: rev
 
-                    if read.Contains k then
-                        value at v
-                    elif not (holdsNull v) then
-                        match jsonToJValStrict 0 "$" v with
-                        | Ok jv -> kept.Add(List.rev at, jv)
-                        | Error _ -> ()
+                    match declared |> Option.bind (Map.tryFind k) with
+                    | Some s -> value at s v
+                    | None when not (isNull read) && read.Contains k -> unnamed at v
+                    | None ->
+                        if not (holdsNull v) then
+                            match jsonToJValStrict 0 "$" v with
+                            | Ok jv -> kept.Add(List.rev at, jv)
+                            | Error _ -> ()
+
+        and value (rev: Fuaran.Core.PathSegment list) (s: WireShapes.Shape) (j: Json) =
+            match s, j with
+            | _, JObject m when log.Nodes.Contains(box m) -> ()
+            | WireShapes.Shape.Kind, JObject m -> object rev m (byTag WireShapes.kinds m)
+            | WireShapes.Shape.Op, JObject m -> object rev m (byTag WireShapes.ops m)
+            | WireShapes.Shape.Record r, JObject m -> object rev m (Map.tryFind r WireShapes.records)
+            | WireShapes.Shape.Union u, JObject m ->
+                object rev m (Map.tryFind u WireShapes.unions |> Option.bind (fun cases -> byTag cases m))
+            | WireShapes.Shape.List item, JArray xs ->
+                xs
+                |> List.iteri (fun i x -> value (Fuaran.Core.PathSegment.Index i :: rev) item x)
+            | WireShapes.Shape.Map entry, JObject m ->
+                for KeyValue(k, v) in m do
+                    value (Fuaran.Core.PathSegment.Key k :: rev) entry v
+            // A node, a scalar, or a value in a lenient spelling of its shape: nothing to walk.
             | _ -> ()
 
-        and value (rev: Fuaran.Core.PathSegment list) (j: Json) =
+        // A member read under a name the table does not carry (a lenient alias): its value's
+        // shape is unknown here, so only what a helper opened inside it is walked.
+        and unnamed (rev: Fuaran.Core.PathSegment list) (j: Json) =
             match j with
-            | JObject m when not (log.Nodes.Contains(box m)) -> object rev m
-            | JArray xs -> xs |> List.iteri (fun i x -> value (Fuaran.Core.PathSegment.Index i :: rev) x)
+            | JObject m when not (log.Nodes.Contains(box m)) -> object rev m None
+            | JArray xs -> xs |> List.iteri (fun i x -> unnamed (Fuaran.Core.PathSegment.Index i :: rev) x)
             | _ -> ()
 
-        object [] node
+        object [] node (Some WireShapes.node)
 
         if kept.Count = 0 then
             Fuaran.UI.HostPrelude.KeptMembers.empty
         else
             Fuaran.UI.HostPrelude.KeptMembers.ofEntries kept
 
+/// Map a `Fuaran.Core.ColumnError` (the compute codecs' six-code envelope) into this host's
+/// `DecodeError` at `path` — surfaced as `WRONG_TYPE` (the closest host code for a
+/// structurally-parsed but invalid compute sub-tree), with the Core failure as the message.
 let private coreError (path: string) (ce: Fuaran.Core.ColumnError) : DecodeError =
     DecodeError.create DecodeErrorCode.WRONG_TYPE path (Fuaran.Core.ColumnCodec.errorString ce) None
 
