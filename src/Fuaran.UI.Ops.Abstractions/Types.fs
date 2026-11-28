@@ -332,6 +332,27 @@ type TreeOp<'Msg> =
     /// `BatchAborted` code.
     | Batch of TreeOp<'Msg> list
 
+/// A decoded op and its one host-only slot (WIRE_FORMAT §15.8, Phase 2880; D45): the
+/// members the op's JSON carried that its shape does not declare, keyed by their path
+/// inside the op (`zzz`, `newKind.zzz`, `accessibility.zzz`, `ops[1].zzz`). The walk
+/// stops at a node the op carries (`InsertChild`'s child, `ReplaceRoot`'s tree), which
+/// holds its own in `Node.KeptMembers`. Neither `TreeOp` nor any record changes shape.
+///
+/// Only the decoder fills the slot (`JsonDecode.decodeOpKept`); an author can write only
+/// `KeptOp.ofOp`, whose slot is empty, so no constructor produces a kept member.
+/// `CanonicalJson.encodeOpKept` writes the slot back, and `Apply.applyKept` installs what
+/// the op's value brings (an `EditNode`'s new kind, an `UpdateAccessibility`'s record).
+type KeptOp<'Msg> =
+    { Op: TreeOp<'Msg>
+      KeptMembers: Fuaran.UI.HostPrelude.KeptMembers }
+
+[<RequireQualifiedAccess>]
+module KeptOp =
+    /// The op with no kept member: what every op an author builds is.
+    let ofOp (op: TreeOp<'Msg>) : KeptOp<'Msg> =
+        { Op = op
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty }
+
 // ─── Error shape (§4d lines 737–761) ───────────────────────────────────────
 
 /// Short stable identifier for an apply-time failure. The AI's closed-loop

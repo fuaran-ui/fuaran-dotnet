@@ -278,8 +278,36 @@ let private nodeJson<'Msg> (n: Node<'Msg>) : JVal =
     let canonical = Fuaran.UI.Ops.Introspect.canonicalForm n
     withKept canonical (Fuaran.UI.Generated.encodeNodeJson canonical)
 
+/// A kind's encoding with the kept members of every node it holds written back (an
+/// `EditNode`'s new kind can hold children). The kind's own kept members ride in the op's
+/// slot, since a kind alone has no node to hold them.
 let private nodeKindJson<'Msg> (k: NodeKind<'Msg>) : JVal =
-    Fuaran.UI.Generated.encodeNodeKindJson (Fuaran.UI.Ops.Introspect.canonicalFormKind k)
+    let canonical = Fuaran.UI.Ops.Introspect.canonicalFormKind k
+    let encoded = Fuaran.UI.Generated.encodeNodeKindJson canonical
+
+    let scratch: Node<'Msg> =
+        { Id = "«kind-scratch»"
+          Kind = canonical
+          State = None
+          Style = None
+          Accessibility = None
+          Motion = None
+          Fallback = None
+          ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
+          Tooltip = None
+          Visible = None }
+
+    match Fuaran.UI.NodeChildren.slots scratch with
+    | [] -> encoded
+    | slots ->
+        slots
+        |> List.fold
+            (fun acc slot ->
+                match slotWirePath slot.Label with
+                | Some(PathSegment.Key "kind" :: path) -> updateAt path (withKept slot.Node) acc
+                | _ -> acc)
+            encoded
 
 /// `StateBehaviour` carries `onLoading` / `onEmpty` **Node** payloads, so it
 /// needs the §16 projection exactly as the two encoders above do — it once
@@ -297,11 +325,23 @@ let private nodeKindJson<'Msg> (k: NodeKind<'Msg>) : JVal =
 /// there is no absence to collapse to. `OnError` is `ErrorPayload -> Node`:
 /// no node to project until it is applied. Nested state inside the spliced
 /// nodes is reached by `canonicalForm`'s own recursion.
+///
+/// The two nodes keep their own kept members (Phase 2880), as every node does.
 let private stateBehaviourJson<'Msg> (s: StateBehaviour<'Msg>) : JVal =
+    let onLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
+    let onEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
+
+    let keep (key: string) (n: Node<'Msg> option) (j: JVal) =
+        match n with
+        | Some node -> updateAt [ PathSegment.Key key ] (withKept node) j
+        | None -> j
+
     Fuaran.UI.Generated.encodeStateBehaviourJson
         { s with
-            OnLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
-            OnEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm }
+            OnLoading = onLoading
+            OnEmpty = onEmpty }
+    |> keep "onLoading" onLoading
+    |> keep "onEmpty" onEmpty
 
 /// Phase 2291 — the `PatchStyle` payload: exactly the members the delta sets,
 /// each a bare token string. Unlike the `SemanticStyle` encoder a default token
@@ -471,6 +511,17 @@ let encodeNodeForTransport<'Msg> (node: Node<'Msg>) : Result<string, LossyPath l
 /// op-stream sinks that persist as JSON text (Sqlite `op_json` column).
 [<MethodImpl(MethodImplOptions.NoInlining)>]
 let encodeOp<'Msg> (op: TreeOp<'Msg>) : string = renderOp (treeOpJson op)
+
+/// Encode a decoded op with its kept members written back (WIRE_FORMAT §15.8, Phase 2880):
+/// `encodeOp`'s bytes plus each member of the op's slot at its ordinal place, so a host that
+/// decodes a replicated op with `JsonDecode.decodeOpKept` and re-encodes it here reproduces
+/// the producer's bytes, and the hash chain with them. An op whose slot is empty encodes
+/// exactly as `encodeOp`.
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let encodeOpKept<'Msg> (op: KeptOp<'Msg>) : string =
+    Fuaran.UI.HostPrelude.KeptMembers.entries op.KeptMembers
+    |> List.fold (fun acc (path, v) -> setAt path v acc) (treeOpJson op.Op)
+    |> renderOp
 
 /// Encode an `OpResultEnvelope` to its canonical JSON string. Used by the
 /// Sqlite sink for the `result_envelope_json` column.

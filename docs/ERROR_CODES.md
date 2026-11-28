@@ -1141,6 +1141,14 @@ chart '{nodeId}' declares an interval over {seriesCount} series — an interval 
 chart '{nodeId}' declares sortBy on a temporal x axis — a temporal axis places each row at its date, so a declared order moves nothing; drop sortBy, or declare xScale 'Category' (Phase 2654)
 ```
 
+#### `FUARAN175` — Warning
+
+`KeptMember` (Phase 2880)
+
+```text
+node '{nodeId}' carries '{path}', a member its shape does not declare — it is kept on re-encode and never read here (WIRE_FORMAT 15.8); drop it, or check the spelling against the declared members (Phase 2880)
+```
+
 <!-- END GENERATED: PreEmitValidate.DefectCodes.toMarkdown -->
 
 ---

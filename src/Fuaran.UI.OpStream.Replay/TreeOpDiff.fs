@@ -138,6 +138,56 @@ module TreeOpDiff =
               TreeOp.UpdateTooltip(NodeId b.Id, b.Tooltip) ]
 
 
+    // ── Kept members (WIRE_FORMAT §15.8, Phase 2880; D45 q3) ────────────────
+    //
+    // A kept member is in the canonical encoding, so it is in the diff's equality. No op
+    // names one, so a change confined to kept members has no field-level op: inside the kind
+    // it takes the `EditNode` floor, the op's slot carrying the new kind's members; on the
+    // node envelope (every entry not under `kind`) no op rewrites the envelope, so the node is
+    // removed and re-inserted at its seat, or the root replaced. The predicates below read the
+    // kind's entries and the envelope's apart, so each change reaches its own floor.
+    module private Kept =
+        let private kindKey = PathSegment.Key "kind"
+
+        let isKind (path: PathSegment list, _: JVal) =
+            match path with
+            | k :: _ when k = kindKey -> true
+            | _ -> false
+
+        /// The node's entries on its envelope (every entry not inside `kind`).
+        let envelope<'Msg> (n: Node<'Msg>) =
+            Fuaran.UI.HostPrelude.KeptMembers.entries n.KeptMembers
+            |> List.filter (isKind >> not)
+
+        /// The node's entries inside its kind, rooted at the kind.
+        let kind<'Msg> (n: Node<'Msg>) =
+            Fuaran.UI.HostPrelude.KeptMembers.under [ kindKey ] n.KeptMembers
+
+        /// `a`'s kind entries beside `b`'s envelope entries: a node that differs from `b` in
+        /// its kind's kept members only.
+        let kindOfAEnvelopeOfB<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Fuaran.UI.HostPrelude.KeptMembers =
+            if
+                Fuaran.UI.HostPrelude.KeptMembers.isEmpty a.KeptMembers
+                && Fuaran.UI.HostPrelude.KeptMembers.isEmpty b.KeptMembers
+            then
+                a.KeptMembers
+            else
+                Fuaran.UI.HostPrelude.KeptMembers.ofEntries (
+                    (Fuaran.UI.HostPrelude.KeptMembers.entries a.KeptMembers |> List.filter isKind)
+                    @ envelope b
+                )
+
+        /// An `EditNode` to `newKind`, its slot carrying `after`'s kind entries.
+        let editNode<'Msg> (id: NodeId) (newKind: NodeKind<'Msg>) (after: Node<'Msg>) : KeptOp<'Msg> =
+            { Op = TreeOp.EditNode(id, newKind)
+              KeptMembers =
+                match kind after with
+                | [] -> Fuaran.UI.HostPrelude.KeptMembers.empty
+                | entries ->
+                    Fuaran.UI.HostPrelude.KeptMembers.ofEntries (
+                        entries |> List.map (fun (p, v) -> PathSegment.Key "newKind" :: p, v)
+                    ) }
+
     // ── Own-content comparison (Phase 2063) ─────────────────────────────────
     //
     // Every comparison below is canonical-JSON equality over CHILDLESS shells
@@ -165,7 +215,20 @@ module TreeOpDiff =
                 State = b.State
                 Style = b.Style
                 Accessibility = b.Accessibility
-                Tooltip = b.Tooltip }
+                Tooltip = b.Tooltip
+                KeptMembers = Kept.kindOfAEnvelopeOfB a b }
+        <> shellB
+
+    /// `kindChanged` over the DECLARED kind alone: both sides' kept members set to `b`'s, so
+    /// a change confined to the kind's kept members does not count (Phase 2880).
+    let private declaredKindChanged<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) (shellB: string) : bool =
+        NodeIndex.encodeShell
+            { a with
+                State = b.State
+                Style = b.Style
+                Accessibility = b.Accessibility
+                Tooltip = b.Tooltip
+                KeptMembers = b.KeptMembers }
         <> shellB
 
     /// `true` when the node's `State` block changed. Substituting `b`'s
@@ -180,7 +243,8 @@ module TreeOpDiff =
                 Kind = b.Kind
                 Style = b.Style
                 Accessibility = b.Accessibility
-                Tooltip = b.Tooltip }
+                Tooltip = b.Tooltip
+                KeptMembers = b.KeptMembers }
         <> shellB
 
     /// Launder `box` to a non-null `obj` (F# 10 nullness: `box` yields
@@ -677,44 +741,48 @@ module TreeOpDiff =
     /// none — so the `EditNode` floor carries `before`'s children in the first
     /// case and the leaf kind alone in the second, and keeps, as `UpdateNode`
     /// does, exactly the children the tree holds when it runs.
-    let private lowerUpdate<'Msg> (before: Node<'Msg>) (after: Node<'Msg>) : TreeOp<'Msg> list =
+    let private lowerUpdate<'Msg> (before: Node<'Msg>) (after: Node<'Msg>) : KeptOp<'Msg> list =
         let id = NodeId after.Id
         let shellA = NodeIndex.encodeShell before
         let shellB = NodeIndex.encodeShell after
 
-        if kindChanged before after shellB then
+        // The new kind, holding the children the node holds here.
+        let held () =
+            if canHold after then
+                withChildren after.Kind (NodeIndex.children before)
+                |> Option.defaultValue after.Kind
+            else
+                after.Kind
+
+        let envelopeEdits () =
+            [ yield! styleEdit id (styleOf before) (styleOf after)
+              if stateChanged before after shellB then
+                  TreeOp.UpdateState(id, stateOf after)
+              yield! traitEdits before after shellB ]
+            |> List.map KeptOp.ofOp
+
+        if declaredKindChanged before after shellB then
             match tryFieldLevel before shellA after shellB with
             | Some fieldOps ->
                 // Granular field-level patch reproduced the kind own-fields — no
                 // wholesale EditNode. Style compares via the materialised records
                 // so `None` ≡ the default record (no spurious op).
-                [ yield! fieldOps
-                  yield! styleEdit id (styleOf before) (styleOf after)
-                  if stateChanged before after shellB then
-                      TreeOp.UpdateState(id, stateOf after)
-                  yield! traitEdits before after shellB ]
+                [ yield! fieldOps |> List.map KeptOp.ofOp; yield! envelopeEdits () ]
             | None ->
-                // Floor: the new kind, holding the children the node holds here.
-                // EditNode preserves the old state·style, so the state is set
+                // Floor. EditNode preserves the old state·style, so the state is set
                 // explicitly and the style by the fields that moved.
-                let held =
-                    if canHold after then
-                        withChildren after.Kind (NodeIndex.children before)
-                        |> Option.defaultValue after.Kind
-                    else
-                        after.Kind
-
-                [ TreeOp.EditNode(id, held)
-                  TreeOp.UpdateState(id, stateOf after)
-                  yield! styleEdit id (styleOf before) (styleOf after)
-                  yield! traitEdits before after shellB ]
+                [ Kept.editNode id (held ()) after
+                  KeptOp.ofOp (TreeOp.UpdateState(id, stateOf after))
+                  yield! styleEdit id (styleOf before) (styleOf after) |> List.map KeptOp.ofOp
+                  yield! traitEdits before after shellB |> List.map KeptOp.ofOp ]
+        elif kindChanged before after shellB then
+            // Only the kind's kept members moved (Phase 2880): the `EditNode` floor, its
+            // slot carrying the new kind's, and nothing else the node did not change.
+            [ Kept.editNode id (held ()) after; yield! envelopeEdits () ]
         else
             // Kind shape identical: only the state, style and traits can have
             // moved, each emitted only if it drifted.
-            [ yield! styleEdit id (styleOf before) (styleOf after)
-              if stateChanged before after shellB then
-                  TreeOp.UpdateState(id, stateOf after)
-              yield! traitEdits before after shellB ]
+            envelopeEdits ()
 
     /// The ids of a subtree as the diff reads it (the node and every free-list
     /// descendant, `NodeIndex.children`) — the ids Core's index keys, so the ids
@@ -731,7 +799,7 @@ module TreeOpDiff =
         (beforeById: Lazy<Map<string, Node<'Msg>>>)
         (afterById: Lazy<Map<string, Node<'Msg>>>)
         (script: SkeletonOp<Node<'Msg>, NodeId> list)
-        : TreeOp<'Msg> list =
+        : KeptOp<'Msg> list =
         let survives (id: string) = Map.containsKey id beforeById.Value
         let mutable covered = Set.empty<string>
 
@@ -744,14 +812,14 @@ module TreeOpDiff =
                           let region = structuralIds Set.empty whole
 
                           if region |> Set.exists survives then
-                              TreeOp.InsertChild(parent, shell)
+                              KeptOp.ofOp (TreeOp.InsertChild(parent, shell))
                           else
                               covered <- Set.union covered region
-                              TreeOp.InsertChild(parent, whole)
-                      | None -> TreeOp.InsertChild(parent, shell)
-              | SkeletonOp.RemoveNode target -> TreeOp.RemoveNode target
-              | SkeletonOp.MoveNode(target, newParent) -> TreeOp.MoveNode(target, newParent)
-              | SkeletonOp.ReorderChildren(parent, order) -> TreeOp.ReorderChildren(parent, order)
+                              KeptOp.ofOp (TreeOp.InsertChild(parent, whole))
+                      | None -> KeptOp.ofOp (TreeOp.InsertChild(parent, shell))
+              | SkeletonOp.RemoveNode target -> KeptOp.ofOp (TreeOp.RemoveNode target)
+              | SkeletonOp.MoveNode(target, newParent) -> KeptOp.ofOp (TreeOp.MoveNode(target, newParent))
+              | SkeletonOp.ReorderChildren(parent, order) -> KeptOp.ofOp (TreeOp.ReorderChildren(parent, order))
               | SkeletonOp.UpdateNode after ->
                   match Map.tryFind after.Id beforeById.Value with
                   | Some before -> yield! lowerUpdate before after
@@ -798,14 +866,65 @@ module TreeOpDiff =
         | other ->
             invalidOp (sprintf "Fuaran.Core Diff.toOpsWith refused with %A, which a contained diff never answers" other)
 
-    /// Diff `a` → `b` into an applyable `TreeOp` list, or Core's refusal under
-    /// the tier's name for it. Folding an `Ok` script through `Apply.apply`
-    /// against `a` reconstructs `b` (canonical equality, up to the two envelope
-    /// slots no op expresses — see the preamble). Two roots with different ids diff to
-    /// `[ ReplaceRoot b ]`, the one op that may change the root id.
-    let tryDiff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Result<TreeOp<'Msg> list, ApplyError> =
+    /// The envelope floor of a kept-member change (Phase 2880): for each survivor whose
+    /// envelope entries moved, outermost first, `RemoveNode` then `InsertChild` of its new
+    /// self at its seat (with a `ReorderChildren` when the seat is not the last). `None` when
+    /// such a node is the root or sits where `InsertChild` cannot put it back (a state arm, a
+    /// fallback, a case): the caller then replaces the root.
+    let private envelopeFloor<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : KeptOp<'Msg> list option =
+        let beforeById = byId a
+
+        let moved (n: Node<'Msg>) =
+            match Map.tryFind n.Id beforeById with
+            | Some old -> Kept.envelope old <> Kept.envelope n
+            | None -> false
+
+        if moved b then
+            None
+        else
+            // The free-list parent of every node, by id (the seats `InsertChild` reaches).
+            let rec seats (acc: Map<string, Node<'Msg>>) (n: Node<'Msg>) =
+                NodeIndex.children n
+                |> List.fold (fun acc c -> seats (Map.add c.Id n acc) c) acc
+
+            let parents = seats Map.empty b
+
+            // Outermost first: a re-inserted node brings its whole new subtree.
+            let rec flagged (n: Node<'Msg>) : Node<'Msg> list =
+                if moved n then
+                    [ n ]
+                else
+                    descendantNodes n |> List.collect flagged
+
+            let targets = descendantNodes b |> List.collect flagged
+
+            let ops =
+                targets
+                |> List.map (fun n ->
+                    match Map.tryFind n.Id parents with
+                    | None -> None
+                    | Some parent ->
+                        let order = NodeIndex.children parent |> List.map (fun c -> NodeId c.Id)
+
+                        Some
+                            [ KeptOp.ofOp (TreeOp.RemoveNode(NodeId n.Id))
+                              KeptOp.ofOp (TreeOp.InsertChild(NodeId parent.Id, n))
+                              if List.last order <> NodeId n.Id then
+                                  KeptOp.ofOp (TreeOp.ReorderChildren(NodeId parent.Id, order)) ])
+
+            if ops |> List.forall Option.isSome then
+                Some(ops |> List.collect Option.get)
+            else
+                None
+
+    /// `tryDiff` with each op's kept-member slot (WIRE_FORMAT §15.8, Phase 2880): folding the
+    /// script through `Apply.applyKept` against `a` reconstructs `b` with its kept members. A
+    /// change confined to the kind's kept members takes the `EditNode` floor, its slot
+    /// carrying the new kind's; one on a node's envelope removes and re-inserts the node at
+    /// its seat, or replaces the root.
+    let tryDiffKept<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Result<KeptOp<'Msg> list, ApplyError> =
         if a.Id <> b.Id then
-            Ok [ TreeOp.ReplaceRoot b ]
+            Ok [ KeptOp.ofOp (TreeOp.ReplaceRoot b) ]
         else
             match
                 Diff.toOpsWith
@@ -816,8 +935,22 @@ module TreeOpDiff =
                     b
             with
             | Ok [] -> Ok []
-            | Ok script -> Ok(lowerScript (lazy (byId a)) (lazy (byId b)) script)
+            | Ok script ->
+                let lowered = lowerScript (lazy (byId a)) (lazy (byId b)) script
+
+                match envelopeFloor a b with
+                | Some floor -> Ok(lowered @ floor)
+                | None -> Ok [ KeptOp.ofOp (TreeOp.ReplaceRoot b) ]
             | Error e -> Error(refusal e)
+
+    /// Diff `a` → `b` into an applyable `TreeOp` list, or Core's refusal under
+    /// the tier's name for it. Folding an `Ok` script through `Apply.apply`
+    /// against `a` reconstructs `b` (canonical equality, up to the two envelope
+    /// slots no op expresses — see the preamble — and the kept members an op's slot
+    /// carries, which `tryDiffKept` keeps). Two roots with different ids diff to
+    /// `[ ReplaceRoot b ]`, the one op that may change the root id.
+    let tryDiff<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : Result<TreeOp<'Msg> list, ApplyError> =
+        tryDiffKept a b |> Result.map (List.map _.Op)
 
     /// Diff `a` → `b` into an applyable `TreeOp` list (`tryDiff`). A pair Core
     /// refuses — a tree carrying an id twice, which no id-addressed script can
@@ -827,6 +960,12 @@ module TreeOpDiff =
         match tryDiff a b with
         | Ok ops -> ops
         | Error _ -> [ TreeOp.ReplaceRoot b ]
+
+    /// `diff` with each op's kept-member slot (`tryDiffKept`).
+    let diffKept<'Msg> (a: Node<'Msg>) (b: Node<'Msg>) : KeptOp<'Msg> list =
+        match tryDiffKept a b with
+        | Ok ops -> ops
+        | Error _ -> [ KeptOp.ofOp (TreeOp.ReplaceRoot b) ]
 
     /// Diff `a` → `b` as a single atomic unit: wraps the op list in `Batch`
     /// when there are ≥2 ops (one interaction = one atomic patch, per Phase

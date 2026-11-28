@@ -10,6 +10,31 @@ consequence.
 
 ---
 
+## 2026-11-28 — D46: what a member is declared on is read from a table generated from `idl.json`, and an op's kept members ride beside it
+
+**Decided (Phase 2880, building D45).** Two choices the build of D45 needed and the design did not name.
+
+1. **The declared-member table.** The decoder keeps a member when its object's shape does not declare it and no
+   decoder read it. The read log alone over-keeps: many kinds are decoded through the generated layer, which records
+   no reads, so every member of theirs would look unread. So the declared members of every object shape (the node
+   envelope, each kind, each record, each union case and each op) are a second artefact generated from `idl.json`,
+   `src/Fuaran.UI.Ops/WireShapes.fs`, rendered by `src/Fuaran.UI.Idl/WireShapes.fs` under `FUARAN_REGEN` and
+   drift-checked by `Fuaran.UI.Idl.Tests`, as `Generated.fs` is. The table speaks for the declared spelling and the
+   read log for this decoder's own lenient spellings, which the IDL does not list. **Rejected:** a hand-kept list
+   beside the decoder, which would drift from the vocabulary it restates; and asking the code generator to emit the
+   table, which would be a generator change and release for a fact this repository can render itself.
+2. **The op's slot.** `TreeOp` keeps its shape. A decoded op's kept members ride in `KeptOp` (`Op` and
+   `KeptMembers`), filled only by `JsonDecode.decodeOpKept`, written by `CanonicalJson.encodeOpKept`, applied by
+   `Apply.applyKept` and produced by `TreeOpDiff.diffKept`. The existing entry points are unchanged in signature: they
+   carry an empty op slot, while a node's own kept members travel with the node everywhere. **Rejected:** a field on
+   every `TreeOp` case, which breaks every pattern and construction of the union for a slot most callers never fill.
+
+**Consequence.** A new member in `idl.json` regenerates the table with `Generated.fs`, so it is declared the moment
+it is admitted. A caller that replays ops through the hash chain and must reproduce a producer's op bytes decodes with
+`decodeOpKept` and re-encodes with `encodeOpKept`. The op-stream envelope codecs take an injected `TreeOp` codec
+today, so an envelope decoded through them carries the nodes' kept members and not an op's own; routing them
+through the kept pair is a change to those codecs, not made here.
+
 ## 2026-11-28 — D45: an undeclared member is kept on its object, canonically, in every identity, and behind every gate
 
 **Decided (Phase 2879, ruled 2026-11-28).** A member that a kind does not declare is kept on re-encode, on every

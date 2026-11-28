@@ -2157,3 +2157,81 @@ let kindCategoryFamilyTests =
                   (Set.difference (Set.ofList Generated.allWireTags) reached)
                   "the sample reaches every declared kind, so the agreement is total"
           } ]
+
+// ─── Phase 2880 — no constructor produces a kept member (WIRE_FORMAT §15.8) ───
+
+module private KeptMemberSurface =
+    open System.Reflection
+
+    /// Invoke every public static function of `t` that returns a `Node<'Msg>`, at `obj` and
+    /// with every argument its type's default, keeping the nodes that build.
+    let builtNodes (t: System.Type) : (string * Node<obj>) list =
+        [ for m in t.GetMethods(BindingFlags.Public ||| BindingFlags.Static) do
+              let m =
+                  if m.IsGenericMethodDefinition && m.GetGenericArguments().Length = 1 then
+                      m.MakeGenericMethod(typeof<obj>)
+                  else
+                      m
+
+              if not m.ContainsGenericParameters && m.ReturnType = typeof<Node<obj>> then
+                  let args =
+                      m.GetParameters()
+                      |> Array.map (fun p ->
+                          if p.ParameterType.IsValueType then
+                              System.Activator.CreateInstance p.ParameterType
+                          else
+                              null)
+
+                  match
+                      (try
+                          Some(m.Invoke(null, args))
+                       with _ ->
+                           None)
+                  with
+                  | Some(:? Node<obj> as n) -> yield m.Name, n
+                  | _ -> () ]
+
+[<Tests>]
+let keptMemberSurfaceTests =
+    testList
+        "Phase 2880 - no constructor or smart constructor produces a kept member"
+        [ test "the slot's type has no public way to add an entry" {
+              let t = typeof<Fuaran.UI.HostPrelude.KeptMembers>
+              Expect.isEmpty (t.GetConstructors()) "no public constructor"
+
+              let producers =
+                  [ for a in [ t.Assembly; typeof<Fuaran.UI.Ops.Types.KeptOp<obj>>.Assembly ] do
+                        for ty in a.GetExportedTypes() do
+                            for m in
+                                ty.GetMethods(
+                                    System.Reflection.BindingFlags.Public ||| System.Reflection.BindingFlags.Static
+                                ) do
+                                if m.ReturnType = t then
+                                    yield ty.Name + "." + m.Name ]
+
+              Expect.equal producers [ "KeptMembersModule.get_empty" ] "the one public producer is the empty slot"
+          }
+
+          test "every generated smart constructor and every authoring builder writes the empty slot" {
+              let built =
+                  [ yield!
+                        KeptMemberSurface.builtNodes (
+                            typeof<Fuaran.UI.HostPrelude.KeptMembers>.Assembly.GetType("Fuaran.UI.Generated")
+                            |> nonNull
+                        )
+                    yield!
+                        KeptMemberSurface.builtNodes (
+                            typeof<Fuaran.UI.HostPrelude.KeptMembers>.Assembly.GetType("Fuaran.UI.FuaranModule")
+                            |> Option.ofObj
+                            |> Option.defaultWith (fun () ->
+                                typeof<Fuaran.UI.HostPrelude.KeptMembers>.Assembly.GetType("Fuaran.UI.Fuaran")
+                                |> nonNull)
+                        ) ]
+
+              Expect.isGreaterThan built.Length 60 "the sweep reaches the smart constructors and the builders"
+
+              for name, n in built do
+                  Expect.isTrue
+                      (Fuaran.UI.HostPrelude.KeptMembers.isEmpty n.KeptMembers)
+                      $"{name} writes no kept member"
+          } ]
