@@ -1538,7 +1538,9 @@ let private updateRowField (row: Row) (field: string) (newValue: obj) : Row = Ma
 //      (tree declared a hash but the registry has none).
 //
 //   2. Exposed-NodeIds check (post-mount, asynchronous via setTimeout).
-//      On Fable, scan the rendered Custom-wrapper subtree for
+//      On Fable, scan the subtree of the node's own wrapper (the element
+//      carrying the Custom node's `data-fuaran-node-id`, which holds the
+//      Phase 2885 Custom wrapper when one is emitted) for
 //      `[data-fuaran-node-id]` and verify each declared id appears.
 //      Missing ids log through `IFuaranRuntime.Warn`. Non-blocking. On
 //      .NET, no-op — FUARAN053 in the validator covers the build-time
@@ -1592,9 +1594,10 @@ let mutable private boundaryFallbacks: (string -> string -> RenderedElement) lis
 
 #if FABLE_COMPILER
 /// Fable-side post-paint DOM walk. setTimeout(0) defers past React's
-/// commit phase; the walk then scans the Custom wrapper's subtree for
-/// declared `exposedNodeIds`. Re-schedules on every render — debouncing
-/// is the host's concern via the `Warn` channel.
+/// commit phase; the walk then scans the subtree of the node's own wrapper
+/// (found by its `data-fuaran-node-id`) for declared `exposedNodeIds`.
+/// Re-schedules on every render — debouncing is the host's concern via the
+/// `Warn` channel.
 let private scheduleExposedNodeIdsVerification
     (parentNodeId: string)
     (expectedIds: string list)
@@ -3392,12 +3395,23 @@ let rec private renderKind
             else
                 element
 
-        let dispatchToRenderer () : RenderedElement =
+        // Phase 2885 — a registered renderer's body is wrapped exactly when the
+        // server wraps it (`RenderParity` decides for both): the node declares
+        // exposed ids, or the body renders past an advisory mismatch. The
+        // placeholder for an unregistered renderer is not a body, and is not.
+        let wrapped (advisoryMismatch: bool) (body: RenderedElement) : RenderedElement =
+            let exposed = customSpec.ExposedNodeIds |> Option.defaultValue []
+
+            match RenderParity.customWrapperAttributes moduleId componentId exposed advisoryMismatch with
+            | None -> body
+            | Some attrs -> Html.div (Emit.attrs attrs @ [ prop.children [ body ] ])
+
+        let dispatchToRenderer (advisoryMismatch: bool) : RenderedElement =
             match registryProbe with
-            | Some(fn, _) -> routed (fn props)
+            | Some(fn, _) -> wrapped advisoryMismatch (routed (fn props))
             | None ->
                 match ctx.Runtime.TryRenderCustomInScope(ctx.Policy.Scope, moduleId, componentId, props) with
-                | Some element -> routed element
+                | Some element -> wrapped advisoryMismatch (routed element)
                 | None -> renderPlaceholder ()
 
         /// Refuse the node: warn, then route through `OnError` when the consumer
@@ -3419,11 +3433,13 @@ let rec private renderKind
         let renderedElement =
             match outcome with
             | CustomHashOutcome.Match
-            | CustomHashOutcome.NoTreeHash -> dispatchToRenderer ()
+            | CustomHashOutcome.NoTreeHash -> dispatchToRenderer false
             | CustomHashOutcome.RegistryNoHash
             | CustomHashOutcome.MismatchAdvisory ->
                 ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
-                dispatchToRenderer ()
+                // Only a MISMATCH is marked: the server marks no registry-side
+                // absence either, so the two tiers agree on both.
+                dispatchToRenderer (outcome = CustomHashOutcome.MismatchAdvisory)
             | CustomHashOutcome.MismatchStrict ->
                 // OnError-routing: synthesize a BindingResolution-shaped
                 // payload (closest existing ErrorKind for a renderer-side

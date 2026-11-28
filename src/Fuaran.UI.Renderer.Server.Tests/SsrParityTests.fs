@@ -1643,3 +1643,133 @@ let ssrParityTests =
                               (contains (sprintf ">%s<" name) html)
                               (sprintf "%s: icon name '%s' must not appear as text content" f.Name name)
           } ]
+
+// ─── Phase 2885 — a Custom node's wrapper ───────────────────────────────────
+//
+//  When a `Custom` node declares exposed ids, or its registered renderer's body
+//  renders past an ADVISORY hash mismatch, the body is wrapped; otherwise it is
+//  not. The server always wrapped and the client never did, so a page hydrating
+//  the server's markup met a `div` the client did not build. Both renderers now
+//  emit the wrapper `RenderParity.customWrapperAttributes` decides. This is the
+//  server's half, pinned in bytes: the client's half is
+//  `tests/fable-render/CustomWrapperTests.fs`, on a mounted DOM, since on .NET
+//  the client's elements do not build. The two halves compare against the one
+//  definition, and the goldens below fix what that definition emits.
+
+let private gaugeBody = "<span class=\"gauge-face\"></span>"
+
+let private gaugeRegistry (registeredHash: string option) =
+    let render =
+        fun (_: Map<string, Fuaran.Core.JVal>) -> Markup.element "span" [ "class", "gauge-face" ] []
+
+    match registeredHash with
+    | Some h -> Registry.empty |> Registry.registerWithHash "widgets" "gauge" h render
+    | None -> Registry.empty |> Registry.register "widgets" "gauge" render
+
+let private advisoryHash (h: string) : ContentHash =
+    { Algorithm = "SHA256"
+      Hash = h
+      Strictness = HashStrictness.AdvisoryWarning }
+
+let private gauge (id: string) (contentHash: ContentHash option) (exposed: string list) : Node<obj> =
+    Fuaran.custom id "widgets" "gauge" Map.empty contentHash (exposed |> List.map NodeId)
+
+/// The markup inside a node's own wrapper: everything after its open tag.
+let private insideNodeWrapper (id: string) (html: string) : string =
+    let tag = wrapperTagOf id html
+    html.Substring(html.IndexOf(tag, System.StringComparison.Ordinal) + tag.Length)
+
+/// The wrapper the shared definition decides, as the server writes it.
+let private sharedWrapper (exposed: string list) (advisory: bool) : string =
+    match RenderParity.customWrapperAttributes "widgets" "gauge" exposed advisory with
+    | Some attrs -> Markup.toHtml (Markup.element "div" attrs [ Markup.raw gaugeBody ])
+    | None -> gaugeBody
+
+/// Render under an installed `AdvisoryWarning` process floor — the only posture
+/// in which a mismatch renders rather than refuses — and restore the default.
+let private underAdvisoryFloor (render: unit -> string) : string =
+    CustomHash.clearCustomHashFloorForTests ()
+
+    try
+        CustomHash.installCustomHashFloor HashStrictness.AdvisoryWarning
+        render ()
+    finally
+        CustomHash.clearCustomHashFloorForTests ()
+
+// Sequenced, because the advisory case installs the PROCESS-global hash floor,
+// which every other Custom test in this assembly reads at its shipped default.
+[<Tests>]
+let customWrapperParityTests =
+    testSequenced
+    <| testList
+        "SSR parity — the Custom wrapper (Phase 2885)"
+        [ test "declared exposed ids: the body is wrapped in the shared wrapper" {
+              let html =
+                  Render.renderWith (gaugeRegistry None) BindingResolver.empty (gauge "g1" None [ "needle"; "scale" ])
+
+              let golden =
+                  "<div class=\"fuaran-custom-wrapper fuaran-custom-widgets-gauge\" data-fuaran-exposed-node-ids=\"needle scale\">"
+                  + gaugeBody
+                  + "</div>"
+
+              Expect.equal (sharedWrapper [ "needle"; "scale" ] false) golden "the shared definition emits the golden"
+
+              Expect.isTrue
+                  ((insideNodeWrapper "g1" html).StartsWith(golden, System.StringComparison.Ordinal))
+                  (sprintf "the node wrapper's first child is the shared wrapper — got %s" html)
+          }
+
+          test "an advisory mismatch: the body is wrapped with the advisory marker" {
+              let html =
+                  underAdvisoryFloor (fun () ->
+                      Render.renderWith
+                          (gaugeRegistry (Some "registered"))
+                          BindingResolver.empty
+                          (gauge "g2" (Some(advisoryHash "declared")) []))
+
+              let golden =
+                  "<div class=\"fuaran-custom-wrapper fuaran-custom-widgets-gauge\" data-fuaran-custom-hash-mismatch=\"advisory\">"
+                  + gaugeBody
+                  + "</div>"
+
+              Expect.equal (sharedWrapper [] true) golden "the shared definition emits the golden"
+
+              Expect.isTrue
+                  ((insideNodeWrapper "g2" html).StartsWith(golden, System.StringComparison.Ordinal))
+                  (sprintf "the drifted body renders inside the marked wrapper — got %s" html)
+          }
+
+          test "both: exposed ids first, then the advisory marker, on one wrapper" {
+              let html =
+                  underAdvisoryFloor (fun () ->
+                      Render.renderWith
+                          (gaugeRegistry (Some "registered"))
+                          BindingResolver.empty
+                          (gauge "g3" (Some(advisoryHash "declared")) [ "needle" ]))
+
+              Expect.isTrue
+                  ((insideNodeWrapper "g3" html)
+                      .StartsWith(sharedWrapper [ "needle" ] true, System.StringComparison.Ordinal))
+                  (sprintf "one wrapper carries both — got %s" html)
+          }
+
+          test "neither: the body is the node wrapper's own child, unwrapped" {
+              let html =
+                  Render.renderWith (gaugeRegistry None) BindingResolver.empty (gauge "g4" None [])
+
+              Expect.equal (sharedWrapper [] false) gaugeBody "the shared definition decides no wrapper"
+
+              Expect.isTrue
+                  ((insideNodeWrapper "g4" html).StartsWith(gaugeBody, System.StringComparison.Ordinal))
+                  (sprintf "the body sits directly in the node wrapper — got %s" html)
+
+              Expect.isFalse (contains "fuaran-custom-wrapper" html) "and no wrapper is emitted"
+          }
+
+          test "an unregistered renderer's placeholder is not wrapped, whatever it declares" {
+              let html =
+                  Render.renderWith Registry.empty BindingResolver.empty (gauge "g5" None [ "needle" ])
+
+              Expect.isFalse (contains "fuaran-custom-wrapper" html) "a placeholder is not a body"
+              Expect.isFalse (contains RenderParity.CustomExposedNodeIdsAttribute html) "and carries no exposed ids"
+          } ]

@@ -23,6 +23,8 @@ open Fuaran.UI.Types
 //      a fragment it is already expanding.
 //    * `depthExceededText` — the marker for a subtree nested past
 //      `WireLimits.MaxDepth`.
+//    * `customWrapperAttributes` — whether a registered `Custom` renderer's
+//      body is wrapped, and the wrapper's class and data attributes (Phase 2885).
 //
 //  FSharp.Core only and Fable-portable, like the rest of this project.
 // ============================================================================
@@ -97,3 +99,51 @@ let depthExceededText: string =
     "[subtree omitted: nesting exceeds the wire limit MaxDepth = "
     + string WireLimits.MaxDepth
     + "]"
+
+/// The attribute a `Custom` node's wrapper carries its declared exposed ids on,
+/// space-separated.
+[<Literal>]
+let CustomExposedNodeIdsAttribute = "data-fuaran-exposed-node-ids"
+
+/// The attribute that marks a `Custom` node's hash verdict: `advisory` on the
+/// wrapper of a body rendered past a mismatch, `strict` on the refusal element
+/// the server renders in place of a refused body.
+[<Literal>]
+let CustomHashMismatchAttribute = "data-fuaran-custom-hash-mismatch"
+
+/// The wrapper both renderers put around a REGISTERED `Custom` renderer's body
+/// (Phase 2885), as its attributes in emission order, or `None` for no wrapper.
+///
+/// A wrapper is emitted when the node declares exposed ids or the body renders
+/// past an ADVISORY hash mismatch, and never otherwise, so a `Custom` node that
+/// declares neither renders its body bare on both tiers. The wrapper is the one
+/// place in the document where those two facts are attributes: a host's
+/// stylesheet, an inspector or a test can select a component's wrapper by its
+/// per-component class, read which interior ids it promised, and see that it
+/// rendered on a hash that did not verify, which on the client was otherwise a
+/// warning on the runtime's channel alone. Until this phase only the server
+/// emitted it, so a page hydrating server markup met a `div` the client never
+/// built.
+///
+/// The placeholder for an unregistered renderer and the refusal of a strict
+/// mismatch are not bodies, and are not wrapped.
+let customWrapperAttributes
+    (moduleId: string)
+    (componentId: string)
+    (exposedNodeIds: string list)
+    (advisoryMismatch: bool)
+    : (string * string) list option =
+    let exposed =
+        match exposedNodeIds with
+        | [] -> []
+        | ids -> [ CustomExposedNodeIdsAttribute, String.concat " " ids ]
+
+    let advisory =
+        if advisoryMismatch then
+            [ CustomHashMismatchAttribute, "advisory" ]
+        else
+            []
+
+    match exposed @ advisory with
+    | [] -> None
+    | attrs -> Some(("class", Css.customWrapper moduleId componentId) :: attrs)

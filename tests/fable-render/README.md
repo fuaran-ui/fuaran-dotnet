@@ -14,6 +14,7 @@ the gate's Fable stage ([`../fable-laws/fable-check.ps1`](../fable-laws/fable-ch
 | `Expecto.fs` | Expecto's call shape (`testList`, `testCase`, `Expect.*`) and a small runner. Expecto itself does not transpile. |
 | `SubtreeMemoTests.fs` | Phase 2547's subtree memo on real elements: a kept node is the identical element; a store write, a new context and a new node each rebuild; an action sink defeats it. |
 | `RawSinkPropTests.fs` | Phase 2069's raw sink: one `dangerouslySetInnerHTML` object per markup, and no `childList` mutation when a mounted markdown sink re-renders with unchanged markup. |
+| `CustomWrapperTests.fs` | Phase 2885's `Custom` wrapper on a mounted tree: declared exposed ids or an advisory hash mismatch wrap a registered renderer's body (React form and DOM mount) in the wrapper `RenderParity.customWrapperAttributes` decides, which is the server's; a node declaring neither stays unwrapped. |
 | `DomMountTests.fs` | Phase 2513's DOM-mount `Custom` renderer on a mounted tree: one mount into an emptied element, `Update` on changed props only, `Dispose` when the node leaves, and a throwing mount or update reported and shown as the failure placeholder, or as an enclosing `ErrorBoundary`'s fallback. A React-form renderer's element is served unchanged. |
 | `Dom.fs` | The mounted-tree helpers the cases share: a container, a React root over it, and `flushSync`. |
 | `Program.fs` | The entry point: runs the suite, publishes the verdict, sets `process.exitCode`. |

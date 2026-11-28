@@ -680,7 +680,7 @@ and private renderCustom
             Markup.textElement
                 "div"
                 [ "class", Css.customHashMismatch moduleId componentId
-                  "data-fuaran-custom-hash-mismatch", "strict" ]
+                  RenderParity.CustomHashMismatchAttribute, "strict" ]
                 (sprintf "[fuaran:custom %s.%s — content-hash mismatch (StrictReplay)]" moduleId componentId)
         | advisory ->
             // The registered closure is a host trust boundary — it escapes its
@@ -688,24 +688,14 @@ and private renderCustom
             // client RegisterCustomRenderer). See SANITIZATION.md.
             let body = renderer props
 
-            // Emit the declared exposed-node-ids as an addressable data attribute
-            // so the layout observer / hydration can locate interior nodes. Only
-            // wraps when ids are declared (zero structural change otherwise).
-            let exposedAttr =
-                match exposedNodeIds with
-                | [] -> []
-                | ids ->
-                    let joined = ids |> String.concat " "
-                    [ "data-fuaran-exposed-node-ids", joined ]
+            // Phase 2885 — the wrapper (declared exposed ids, or an advisory
+            // mismatch) is `RenderParity`'s decision, which the client's Custom
+            // arm reads too, so a hydrating client meets the structure it builds.
+            let advisoryMismatch = advisory = Some HashStrictness.AdvisoryWarning
 
-            let advisoryAttr =
-                match advisory with
-                | Some HashStrictness.AdvisoryWarning -> [ "data-fuaran-custom-hash-mismatch", "advisory" ]
-                | _ -> []
-
-            match exposedAttr @ advisoryAttr with
-            | [] -> body
-            | attrs -> Markup.element "div" (("class", Css.customWrapper moduleId componentId) :: attrs) [ body ]
+            match RenderParity.customWrapperAttributes moduleId componentId exposedNodeIds advisoryMismatch with
+            | None -> body
+            | Some attrs -> Markup.element "div" attrs [ body ]
 
 // ─── Public entry points ─────────────────────────────────────────────────────
 

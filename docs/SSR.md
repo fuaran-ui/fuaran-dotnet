@@ -245,8 +245,11 @@ let html = Render.renderWith registry BindingResolver.empty tree
   drifted renderer is **not** invoked); `AdvisoryWarning` renders the body with
   a `data-fuaran-custom-hash-mismatch="advisory"` marker.
 - **Exposed node ids:** a Custom node's declared `exposedNodeIds` are emitted as
-  a `data-fuaran-exposed-node-ids` attribute on a wrapper so the layout observer
-  / hydration can locate the interior nodes.
+  a `data-fuaran-exposed-node-ids` attribute on a `fuaran-custom-wrapper` `div`
+  around the registered renderer's body (the advisory marker rides the same
+  wrapper). The client renderer emits the same wrapper, decided by
+  `RenderParity.customWrapperAttributes` for both (Phase 2885), so hydration meets
+  the structure the client builds; a node with neither declaration is unwrapped.
 - **Trust boundary:** the registered closure is a **host trust boundary** – it
   escapes its own output; the server does **not** sanitize it (identical posture
   to the client `RegisterCustomRenderer`). See

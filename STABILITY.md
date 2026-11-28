@@ -7955,6 +7955,35 @@ golden `email-corpus/`.
   `src/Fuaran.UI.Giraffe.Tests/DocumentTests.fs` ("an attribute VALUE gets Markup's five-character escape").
 - The unconsumed `Markdig` `PackageVersion` left `Directory.Packages.props`. No project referenced it.
 
+### Phase 2885 — the client renderer wraps a `Custom` body where the server does (additive; client markup changes)
+
+**Class: additive.** Packages `Fuaran.UI.Renderer.Core` and `Fuaran.UI.Renderer`. New members only; no record gains a
+field, no union gains a case, and no existing member changes signature.
+
+- **New in `Fuaran.UI.Renderer.RenderParity`.** `customWrapperAttributes moduleId componentId exposedNodeIds
+  advisoryMismatch`, which decides whether a registered `Custom` renderer's body is wrapped and returns the wrapper's
+  attributes in emission order, and the literals `CustomExposedNodeIdsAttribute` (`data-fuaran-exposed-node-ids`) and
+  `CustomHashMismatchAttribute` (`data-fuaran-custom-hash-mismatch`). Both renderers emit from it.
+- **Emitted markup changes on the client.** When a `Custom` node declares exposed ids, or its registered renderer's
+  body renders past an ADVISORY hash mismatch, the client now wraps the body in
+  `<div class="fuaran-custom-wrapper fuaran-custom-<moduleId>-<componentId>">` carrying
+  `data-fuaran-exposed-node-ids` (the ids, space-separated) and/or `data-fuaran-custom-hash-mismatch="advisory"`, for
+  the React form and the DOM-mount form alike. The server has always emitted that wrapper, so a page hydrating server
+  markup no longer meets a `div` the client did not build. A host stylesheet or script that selected the registered
+  element as the node wrapper's direct child, on a node with either declaration, now finds the wrapper there.
+- **What does not change.** A `Custom` node that declares neither renders its body bare on both tiers, as before. The
+  server's markup is byte-identical. The unregistered placeholder and a strict refusal are not wrapped on either tier.
+  `RegistryNoHash` (a declared hash the registry cannot check, under a non-enforcing floor) still warns and renders
+  unwrapped, as the server renders it. The exposed-ids walk still starts from the node's own wrapper. No wire byte
+  moves and no kind is added, so the vocabulary charter's gates are not engaged.
+
+**What a consumer must do.** Nothing, unless it selects a registered `Custom` element by position under the node
+wrapper on a node that declares exposed ids or renders past an advisory mismatch; select it by its own class instead.
+
+**Certified by** `tests/fable-render/CustomWrapperTests.fs` (the client half, on a mounted DOM: exposed ids, an
+advisory mismatch, a DOM mount, and the unwrapped control) and the `SSR parity — the Custom wrapper (Phase 2885)` list
+in `src/Fuaran.UI.Renderer.Server.Tests/SsrParityTests.fs` (the server half, in bytes against goldens).
+
 ---
 
 ## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix

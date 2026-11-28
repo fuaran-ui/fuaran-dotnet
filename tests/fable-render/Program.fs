@@ -33,6 +33,7 @@ let main _ =
                 "fable-render"
                 [ FableRender.SubtreeMemoTests.tests
                   FableRender.RawSinkPropTests.tests
+                  FableRender.CustomWrapperTests.tests
                   FableRender.DomMountTests.tests ]
         )
 
