@@ -7,7 +7,7 @@ module Fuaran.UI.Tests.ElementPlanTests
 //  through a thin per-tier `Emit`; the server half
 //  (`Fuaran.UI.Renderer.Server.Tests/ElementPlanServerTests.fs`) pins that the
 //  server's HTML is exactly the plan. This half pins the plan VALUES — the one
-//  definition the client renderer now emits from too, since its Feliz element
+//  definition the client renderer now emits from too, since its `RenderedElement`
 //  is opaque on .NET and cannot be read back here.
 // ============================================================================
 

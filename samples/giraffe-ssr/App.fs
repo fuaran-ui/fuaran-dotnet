@@ -58,10 +58,13 @@ let private sparklineContract: CustomContract<Sparkline> =
         HashStrictness.StrictReplay
 
 let private sparklineRenderer (p: Sparkline) : Markup =
+    // `Points` is decoded from the tree's prop bag, so it is untrusted: escape
+    // it with the server emitter's own escaper before it lands in the
+    // double-quoted `points` attribute of this hand-written markup.
     let svg =
         sprintf
             "<svg viewBox=\"0 0 100 30\" width=\"100\" height=\"30\" role=\"img\" aria-label=\"trend\"><polyline points=\"%s\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg>"
-            p.Points
+            (Markup.escape p.Points)
 
     Markup.rawElement "div" [ "class", "sample-sparkline" ] svg
 

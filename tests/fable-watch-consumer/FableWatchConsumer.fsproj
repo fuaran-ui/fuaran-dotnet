@@ -12,7 +12,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <!-- A renderer consumer: Feliz and Fable.React predate F# 10 nullness, so an entry project that
+    <!-- A renderer consumer: Fable.Core and Fable.Browser.Dom predate F# 10 nullness, so an entry project that
          compiles the renderer disables it, as `Fuaran.UI.Renderer` itself and every sample here do.
          Fuaran.UI and Fuaran.UI.Ops under nullness ON are the portability stage's subjects. -->
     <Nullable>disable</Nullable>

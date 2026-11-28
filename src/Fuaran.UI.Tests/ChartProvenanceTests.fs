@@ -422,8 +422,8 @@ let tests =
           // ══ SSR / CSR parity ═══════════════════════════════════════════════
 
           test "both renderer tiers reach a chart's SVG through the SAME entry point" {
-              // The strongest parity statement expressible on .NET: the Feliz
-              // client renderer produces an opaque `ReactElement` with no string
+              // The strongest parity statement expressible on .NET: the
+              // client renderer produces an opaque `RenderedElement` with no string
               // projection, so a byte diff cannot be written here. What CAN be
               // pinned is that neither tier has its own emission path — and
               // that is what makes the provenance option thread identically by

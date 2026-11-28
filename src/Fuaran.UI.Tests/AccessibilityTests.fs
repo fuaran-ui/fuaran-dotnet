@@ -4,7 +4,7 @@
 //  `Accessibility` trait + per-component defaults +
 //  Accessibility.accessibilityAttributes projection.
 //
-//  Feliz' .NET-side ReactElement is opaque (rendering happens in the browser),
+//  The renderer's .NET-side `RenderedElement` is opaque (rendering happens in the browser),
 //  so HTML-shape assertions live in the Catalog visual-inspection layer.
 //  These tests pin the typed contract instead — the projection from
 //  `Accessibility option` to `(attr-name, attr-value) list` that the

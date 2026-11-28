@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Renderer.Core</PackageId>
-    <Description>Fuaran renderer core — the emission-agnostic render spine (class-name vocabulary, accessibility-attribute projection, sanitize, binding resolution, locale formatting, deterministic ids). FSharp.Core only; shared by the Feliz client renderer and the Feliz.ViewEngine server renderer. Apache-2.0 licensed.</Description>
+    <Description>Fuaran renderer core — the emission-agnostic render spine (class-name vocabulary, accessibility-attribute projection, sanitize, binding resolution, locale formatting, deterministic ids). FSharp.Core only; shared by the client renderer and the server renderer. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Sanitize.fs guards string DOM seams with `isNull` on `string`-typed
          parameters (defence-in-depth against hand-built / wire-decoded

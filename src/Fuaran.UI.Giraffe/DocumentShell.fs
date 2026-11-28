@@ -207,23 +207,12 @@ module DocumentShell =
 [<RequireQualifiedAccess>]
 module Document =
 
-    /// Escape raw JSON for safe embedding inside a `<script>` element. JSON
-    /// parsers decode `<` etc. back to the original characters, so the
-    /// structured data round-trips unchanged (same scheme as `Hydration`).
-    let private escapeForScript (json: string) : string =
-        json.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026")
-
-    /// Escape an HTML attribute value for the hand-emitted `<html>` / `<body>`
-    /// open tags (the `<head>` content escapes via `Markup`; these two tags
-    /// are concatenated as strings so they escape here).
-    let private attrEscape (s: string) : string =
-        s.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;")
-
     /// Render an attribute list into the hand-emitted `<html>` / `<body>` open
     /// tags, DROPPING any entry whose NAME is not a safe attribute name
     /// (Phase 1523, the Phase 788 class ported here).
     ///
-    /// The value is escaped above; the NAME was written verbatim, and HTML has
+    /// The value is escaped by `Markup.escape`, the same five-character floor
+    /// every `Markup`-built element gets; the NAME was written verbatim, and HTML has
     /// no escape for an illegal character in an attribute name — a space inside
     /// one simply starts a NEW attribute and an `=` starts its value. So a
     /// `HtmlAttributes` / `BodyAttributes` key of `data-x=1 onload=alert(1) z`
@@ -240,7 +229,7 @@ module Document =
     let private renderAttrs (attrs: (string * string) list) : string =
         attrs
         |> List.filter (fun (k, _) -> Sanitize.isSafeAttributeName k)
-        |> List.map (fun (k, v) -> sprintf " %s=\"%s\"" k (attrEscape v))
+        |> List.map (fun (k, v) -> sprintf " %s=\"%s\"" k (Markup.escape v))
         |> String.concat ""
 
     /// The `<head>` element built via `Markup` (text + attribute escaping for
@@ -294,7 +283,7 @@ module Document =
                           | None -> []))
                       []
               for jsonLd in shell.JsonLd do
-                  Markup.rawElement "script" [ "type", "application/ld+json" ] (escapeForScript jsonLd) ]
+                  Markup.rawElement "script" [ "type", "application/ld+json" ] (Hydration.escapeForScript jsonLd) ]
 
     /// The `<html>` attribute list with the locale-derived `lang` / `dir` pair
     /// prepended (Phase 1114).

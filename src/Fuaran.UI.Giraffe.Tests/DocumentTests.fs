@@ -2,6 +2,7 @@ module Fuaran.UI.Giraffe.Tests.DocumentTests
 
 open Expecto
 open Fuaran.UI.Giraffe
+open Fuaran.UI.Renderer.Server
 
 let private fullShell =
     { (DocumentShell.create "Pricing — Acme" |> DocumentShell.withLocale "en") with
@@ -193,6 +194,23 @@ let documentShellHardeningTests =
               let html = Document.render shell "BODY"
               Expect.stringContains html "data-theme=\"dark\"" "a legitimate html attribute is untouched"
               Expect.stringContains html "class=\"app\"" "and a legitimate body attribute"
+          }
+
+          test "an attribute VALUE gets Markup's five-character escape, single quote included" {
+              // The `<html>` / `<body>` open tags are concatenated as strings, so
+              // their values were escaped by a local four-character copy that let
+              // `'` through while every `Markup`-built element escaped it. One
+              // escaper now serves both, and the single quote pins which.
+              let shell =
+                  { DocumentShell.create "T" with
+                      HtmlAttributes = [ "data-x", "a'b\"c<d>e&f" ]
+                      BodyAttributes = [ "data-y", "it's" ] }
+
+              let html = Document.render shell "BODY"
+              let expected = Markup.escape "a'b\"c<d>e&f"
+              Expect.equal expected "a&apos;b&quot;c&lt;d&gt;e&amp;f" "Markup.escape covers all five"
+              Expect.stringContains html (sprintf "data-x=\"%s\"" expected) "the html value is escaped by Markup"
+              Expect.stringContains html "data-y=\"it&apos;s\"" "and the body value, single quote included"
           }
 
           test "a ScriptRef carries the host's nonce, digest and CORS mode when set" {

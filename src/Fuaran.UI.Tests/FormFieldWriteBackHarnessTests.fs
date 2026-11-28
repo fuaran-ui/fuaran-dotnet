@@ -24,7 +24,7 @@ module Fuaran.UI.Tests.FormFieldWriteBackHarness
 //  renderer's 24 write-back call sites, on the same risk with none of the
 //  coverage.
 //
-//  WHY THE HARNESS IS SHAPED THIS WAY. Feliz's .NET-side `ReactElement` is
+//  WHY THE HARNESS IS SHAPED THIS WAY. the renderer's .NET-side `RenderedElement` is
 //  opaque — the constraint `RenderEntrySeamTests` / `AccessibilityTests` /
 //  `ErrorBoundaryTests` / `StateStoreScopingTests` each document — so a
 //  `prop.onChange` handler cannot be pulled off a rendered tree and fired, and

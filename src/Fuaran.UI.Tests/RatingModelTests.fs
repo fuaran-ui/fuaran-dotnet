@@ -3,8 +3,8 @@ module Fuaran.UI.Tests.RatingModel
 // ============================================================================
 //  The rating control's judgements (Phase 1130).
 //
-//  `GridPasteTests`' reason. The .NET test runner mounts no DOM and Feliz's
-//  .NET `ReactElement` is opaque, so a keyboard model written inline in the
+//  `GridPasteTests`' reason. The .NET test runner mounts no DOM and the renderer's
+//  .NET `RenderedElement` is opaque, so a keyboard model written inline in the
 //  React component could only be asserted ABOUT — and every claim here is a
 //  claim about an arithmetic edge where prose is worth nothing:
 //

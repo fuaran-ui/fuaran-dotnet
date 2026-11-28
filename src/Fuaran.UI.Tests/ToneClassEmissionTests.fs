@@ -15,7 +15,7 @@ module Fuaran.UI.Tests.ToneClassEmission
 //  ToneVariant case without updating fuaran-reference.css) gets caught at
 //  CI time rather than at a customer demo.
 //
-//  Feliz' .NET-side ReactElement is opaque so we can't snapshot the
+//  The renderer's .NET-side `RenderedElement` is opaque so we can't snapshot the
 //  rendered DOM here — same constraint as the
 //  AccessibilityTests.fs projection. Instead we pin:
 //    1. `Theme.toneVar` produces the documented suffix for each

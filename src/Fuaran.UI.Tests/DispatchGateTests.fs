@@ -23,7 +23,7 @@ module Fuaran.UI.Tests.DispatchGate
 //   6. Host-reserved State keys are unaddressable from a tree-originated write
 //      even when the gate ALLOWS — the namespace is structural, not policy.
 //
-//  All of this is pure .NET (no Feliz render), so it exercises the same
+//  All of this is pure .NET (no client render), so it exercises the same
 //  decision logic the Fable pipeline runs.
 // ============================================================================
 

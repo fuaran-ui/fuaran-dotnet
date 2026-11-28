@@ -9,7 +9,7 @@ module Fuaran.UI.Tests.MotionEmission
 //  contract; if either side ever drifts, this file is the early-warning
 //  surface.
 //
-//  Feliz' .NET-side ReactElement is opaque (same constraint as
+//  The renderer's .NET-side `RenderedElement` is opaque (same constraint as
 //  AccessibilityTests / ToneClassEmissionTests), so the "outer wrapper
 //  carries fuaran-motion-{token}" assertion mirrors the renderer's
 //  composition rule via `Theme.nodeClassName` + the token suffix, without

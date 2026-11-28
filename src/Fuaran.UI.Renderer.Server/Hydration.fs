@@ -35,8 +35,10 @@ let scriptId (rootId: string) : string = sprintf "fuaran-hydrate-%s" rootId
 
 /// Escape a JSON string for safe embedding inside a `<script>` element. JSON
 /// parsers decode `<` etc. back to the original characters, so the wire
-/// tree round-trips unchanged.
-let internal escapeForScript (json: string) : string =
+/// tree round-trips unchanged. Public so every `<script>`-embedded JSON on the
+/// server path (the document shell's JSON-LD among them) shares this one
+/// definition rather than a copy.
+let escapeForScript (json: string) : string =
     json.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026")
 
 /// The embedded-tree `<script type="application/json">` element carrying the
