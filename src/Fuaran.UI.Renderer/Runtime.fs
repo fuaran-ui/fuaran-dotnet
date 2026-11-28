@@ -166,6 +166,21 @@ type CustomDomMount =
         Fallback: Map<string, JVal> -> string
     }
 
+/// Which of the two forms a `Custom` registration takes (Phase 2887). The form
+/// is a different trust boundary, not a different spelling of one: a React-form
+/// renderer returns an element the renderer places, while a DOM mount is handed
+/// a live element in the document and can reach anything the page can. The
+/// registry records it when the renderer is registered, because the table holds
+/// a closure either way and nothing about a closure says which form built it.
+[<RequireQualifiedAccess>]
+type CustomRendererForm =
+    /// Registered with `Register`, `RegisterInScope` or `RegisterContract`: the
+    /// renderer returns a `RenderedElement`.
+    | ReactElement
+    /// Registered with `RegisterDomMount` or `RegisterDomMountInScope`: the
+    /// renderer is a `CustomDomMount` given a live DOM element.
+    | DomMount
+
 /// The React side of a DOM mount: one function component per mounted node.
 /// Internal, because the contract is `CustomDomMount`; this module is how the
 /// current emitter honours it, and the `Custom` arm in `Render.fs` is its only
@@ -351,7 +366,7 @@ type CustomRendererRegistry() =
     let renderers =
         System.Collections.Generic.Dictionary<
             string option * string * string,
-            (Map<string, JVal> -> RenderedElement) * ContentHash option
+            (Map<string, JVal> -> RenderedElement) * ContentHash option * CustomRendererForm
          >()
 
     /// Register (or replace) a renderer keyed on the module + component id, in
@@ -370,7 +385,7 @@ type CustomRendererRegistry() =
             renderFn: Map<string, JVal> -> RenderedElement,
             ?contentHash: ContentHash
         ) : unit =
-        renderers[(None, moduleId, componentId)] <- (renderFn, contentHash)
+        renderers[(None, moduleId, componentId)] <- (renderFn, contentHash, CustomRendererForm.ReactElement)
 
     /// Register (or replace) a renderer reachable ONLY from trees rendered under
     /// `scope` (Phase 783). A tree rendered under a different scope — or under the
@@ -383,7 +398,7 @@ type CustomRendererRegistry() =
             renderFn: Map<string, JVal> -> RenderedElement,
             ?contentHash: ContentHash
         ) : unit =
-        renderers[(Some scope, moduleId, componentId)] <- (renderFn, contentHash)
+        renderers[(Some scope, moduleId, componentId)] <- (renderFn, contentHash, CustomRendererForm.ReactElement)
 
     /// Register (or replace) a DOM mount (Phase 2513) for `(moduleId, componentId)`
     /// in the ROOT render scope. It lands in the same table as a React-form
@@ -393,14 +408,16 @@ type CustomRendererRegistry() =
     member _.RegisterDomMount
         (moduleId: string, componentId: string, mount: CustomDomMount, ?contentHash: ContentHash)
         : unit =
-        renderers[(None, moduleId, componentId)] <- (DomMountHost.element moduleId componentId mount, contentHash)
+        renderers[(None, moduleId, componentId)] <-
+            (DomMountHost.element moduleId componentId mount, contentHash, CustomRendererForm.DomMount)
 
     /// Register (or replace) a DOM mount reachable ONLY from trees rendered under
     /// `scope`, on `RegisterInScope`'s terms (Phase 783, Phase 2513).
     member _.RegisterDomMountInScope
         (scope: string, moduleId: string, componentId: string, mount: CustomDomMount, ?contentHash: ContentHash)
         : unit =
-        renderers[(Some scope, moduleId, componentId)] <- (DomMountHost.element moduleId componentId mount, contentHash)
+        renderers[(Some scope, moduleId, componentId)] <-
+            (DomMountHost.element moduleId componentId mount, contentHash, CustomRendererForm.DomMount)
 
     /// Register a typed Custom **contract** (Phase 164) — one call wires the
     /// decode + render + the contract's derived content hash. A decode failure
@@ -453,7 +470,7 @@ type CustomRendererRegistry() =
         (scope: string option, moduleId: string, componentId: string, props: Map<string, JVal>)
         : RenderedElement option =
         match renderers.TryGetValue((scope, moduleId, componentId)) with
-        | true, (fn, _) -> Some(fn props)
+        | true, (fn, _, _) -> Some(fn props)
         | false, _ -> None
 
     /// Parallel accessor exposing the registered
@@ -471,7 +488,7 @@ type CustomRendererRegistry() =
         (scope: string option, moduleId: string, componentId: string)
         : ((Map<string, JVal> -> RenderedElement) * ContentHash option) option =
         match renderers.TryGetValue((scope, moduleId, componentId)) with
-        | true, pair -> Some pair
+        | true, (fn, contentHash, _) -> Some(fn, contentHash)
         | false, _ -> None
 
     /// True when at least one renderer is registered.
@@ -491,13 +508,25 @@ type CustomRendererRegistry() =
     member _.Registrations: CustomRendererRegistration list =
         [ for entry in renderers do
               let scope, moduleId, componentId = entry.Key
-              let _, contentHash = entry.Value
+              let _, contentHash, _ = entry.Value
 
               { Scope = scope
                 ModuleId = moduleId
                 ComponentId = componentId
                 HasContentHash = contentHash.IsSome } ]
         |> List.sortBy (fun r -> r.Scope, r.ModuleId, r.ComponentId)
+
+    /// **Which form a registration takes** (Phase 2887): `Some` the form of the
+    /// renderer registered for the registration's scope and ids, `None` when
+    /// nothing is registered there. A member beside `Registrations` rather than a
+    /// field on `CustomRendererRegistration`, because a record gaining a field is
+    /// a breaking change to every host that constructs one. Registering either
+    /// form for a key replaces the other, and the form follows the latest
+    /// registration.
+    member _.FormOf(registration: CustomRendererRegistration) : CustomRendererForm option =
+        match renderers.TryGetValue((registration.Scope, registration.ModuleId, registration.ComponentId)) with
+        | true, (_, _, form) -> Some form
+        | false, _ -> None
 
 /// Describes a host-effecting action presented to the dispatch policy gate
 /// (`IFuaranRuntime.CanDispatch`, Phase 119) BEFORE the renderer invokes the

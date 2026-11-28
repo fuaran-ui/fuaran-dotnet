@@ -19,7 +19,9 @@ module Fuaran.UI.Renderer.RuntimeHatches
 //  `custom-renderer-registered` — is any guest renderer reachable at all? Open
 //  names every registration, with its scope, because "a renderer is registered"
 //  and "THIS renderer is registered in the admin scope" are different facts to
-//  whoever is reading. Undecided when the host did not offer its registry: this
+//  whoever is reading. Read from the registry, it names each one's form too
+//  (Phase 2887): a DOM mount holds a live element in the document, which a
+//  React-form renderer does not. Undecided when the host did not offer its registry: this
 //  module cannot enumerate a registry it was not handed, and there is no
 //  defensible default for a door nobody looked at.
 //
@@ -67,9 +69,13 @@ let GuestBoundaryHatch = 2
 [<Literal>]
 let DevelopmentSurfaceHatch = 12
 
-/// One registration, rendered for a reader: what it is, where it is reachable
-/// from, and whether a declared hash could ever be checked against it.
-let describeRegistration (r: Runtime.CustomRendererRegistration) : string =
+/// The form a registration takes, as the report names it (Phase 2887).
+let private formName (form: Runtime.CustomRendererForm) : string =
+    match form with
+    | Runtime.CustomRendererForm.ReactElement -> "React form"
+    | Runtime.CustomRendererForm.DomMount -> "DOM mount"
+
+let private describe (form: Runtime.CustomRendererForm option) (r: Runtime.CustomRendererRegistration) : string =
     let scope =
         match r.Scope with
         | None -> "root scope"
@@ -81,10 +87,24 @@ let describeRegistration (r: Runtime.CustomRendererRegistration) : string =
         else
             "no content hash"
 
-    r.ModuleId + "/" + r.ComponentId + " (" + scope + ", " + hash + ")"
+    let parts = (form |> Option.map formName |> Option.toList) @ [ scope; hash ]
 
-/// Is a guest renderer registered? `None` is the host declining to say.
-let customRendererFinding (registrations: Runtime.CustomRendererRegistration list option) : HatchFinding =
+    r.ModuleId + "/" + r.ComponentId + " (" + String.concat ", " parts + ")"
+
+/// One registration, rendered for a reader: what it is, where it is reachable
+/// from, and whether a declared hash could ever be checked against it.
+let describeRegistration (r: Runtime.CustomRendererRegistration) : string = describe None r
+
+/// One registration with the form it takes (Phase 2887): a React-form renderer
+/// returns an element the renderer places, a DOM mount is handed a live element
+/// in the document, and those are different trust boundaries to a reader.
+let describeRegistrationWithForm (form: Runtime.CustomRendererForm) (r: Runtime.CustomRendererRegistration) : string =
+    describe (Some form) r
+
+let private registeredFinding
+    (describeOne: Runtime.CustomRendererRegistration -> string)
+    (registrations: Runtime.CustomRendererRegistration list option)
+    : HatchFinding =
     match registrations with
     | None ->
         { Predicate = CustomRendererRegistered
@@ -107,7 +127,21 @@ let customRendererFinding (registrations: Runtime.CustomRendererRegistration lis
           Account =
             string (List.length registrations)
             + " custom renderer(s) registered: "
-            + (registrations |> List.map describeRegistration |> String.concat "; ") }
+            + (registrations |> List.map describeOne |> String.concat "; ") }
+
+/// Is a guest renderer registered? `None` is the host declining to say. Handed
+/// the registrations alone, this cannot say which form each takes; the registry
+/// form below can.
+let customRendererFinding (registrations: Runtime.CustomRendererRegistration list option) : HatchFinding =
+    registeredFinding describeRegistration registrations
+
+/// Is a guest renderer registered, read from the host's registry itself
+/// (Phase 2887), so each registration is named with the form it takes. `None`
+/// is the host declining to offer its registry.
+let customRendererFindingOfRegistry (registry: Runtime.CustomRendererRegistry option) : HatchFinding =
+    match registry with
+    | None -> registeredFinding describeRegistration None
+    | Some registry -> registeredFinding (fun r -> describe (registry.FormOf r) r) (Some registry.Registrations)
 
 /// Is the mediation on the guest boundary in force? Reported for every floor,
 /// including the shipped one, so the finding is a positive statement about the
@@ -160,6 +194,13 @@ let developmentSurfaceFinding (live: bool) : HatchFinding =
             "neither half of the introspection surface's opt-in is present on this host, so it registers "
             + "nothing and the relay it would publish is not installed." }
 
+let private section (custom: HatchFinding) (floor: HashStrictness) (developmentSurfaceLive: bool) : HatchSection =
+    { Section = RuntimeSection
+      Findings =
+        [ custom
+          customHashFloorFinding floor
+          developmentSurfaceFinding developmentSurfaceLive ] }
+
 /// The runtime section, over observations supplied as arguments. Reads no
 /// process state — which is what makes every branch above reachable from a test.
 let observeWith
@@ -167,21 +208,18 @@ let observeWith
     (floor: HashStrictness)
     (developmentSurfaceLive: bool)
     : HatchSection =
-    { Section = RuntimeSection
-      Findings =
-        [ customRendererFinding registrations
-          customHashFloorFinding floor
-          developmentSurfaceFinding developmentSurfaceLive ] }
+    section (customRendererFinding registrations) floor developmentSurfaceLive
 
 /// The runtime section for THIS process: the host's registry where it offered
-/// one, the floor in force, and the surface state the caller reports.
+/// one, each registration named with its form, the floor in force, and the
+/// surface state the caller reports.
 ///
 /// The surface state is an argument rather than a read because the module that
 /// owns it is compiled after this one — and the separation is worth keeping
 /// anyway, since a host that publishes this report from somewhere other than the
 /// in-page surface answers that question for itself.
 let observe (registry: Runtime.CustomRendererRegistry option) (developmentSurfaceLive: bool) : HatchSection =
-    observeWith
-        (registry |> Option.map (fun r -> r.Registrations))
+    section
+        (customRendererFindingOfRegistry registry)
         (Fuaran.UI.Renderer.CustomHash.currentCustomHashFloor ())
         developmentSurfaceLive
