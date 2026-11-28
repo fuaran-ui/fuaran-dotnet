@@ -7813,7 +7813,7 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.110.0 — the slot opened after v0.109.1 was released (DRAFT — untagged), by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive, and advanced to the breaking class by Phase 2514 (the client renderer leaves Feliz)
+## 0.110.0 — the slot opened after v0.109.1 was released (DRAFT — untagged), by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive, and advanced to the breaking class by Phase 2514 (the client renderer leaves Feliz), which Phase 2880 (a member a kind does not declare is kept on re-encode) rides
 
 **Class: breaking** (Phase 2514; additive until it). `v0.109.1` is tagged, so nothing rides it. The version ledger cut
 `<Version>` to 0.110.0 for this slot: an additive change takes the next minor, and pre-1.0 a breaking change takes
@@ -7943,6 +7943,58 @@ builder); the five files that built a ViewEngine element tree now build `Markup`
 **Certified by** `src/Fuaran.UI.Renderer.Server.Tests/MarkupTests.fs` (each emitter rule pinned by its bytes) and the
 unchanged corpora: `SsrParityTests`, `HydrationTests`, `IslandsTests`, `ResumeTests` and `EmailProjectionTests` with its
 golden `email-corpus/`.
+
+### Phase 2880 — a member a kind does not declare is kept on re-encode (breaking in source)
+
+**Class: breaking in source, additive on the wire.** Packages `Fuaran.UI`, `Fuaran.UI.Ops.Abstractions`,
+`Fuaran.UI.Ops`, `Fuaran.UI.OpStream.Abstractions` and `Fuaran.UI.OpStream.Replay`. `Node` gains a field and
+`PreEmitDefect` gains a case, so a full record literal and an exhaustive match stop compiling. Pre-1.0 a minor may
+break, and the slot is already in the breaking class (Phase 2514), so this rides 0.110.0 and no `<Version>` moves.
+The rule is WIRE_FORMAT §15.8; the decisions are D45 and D46 in [`docs/DECISIONS.md`](docs/DECISIONS.md), and the
+design is [`docs/design/undeclared-member-preservation.md`](docs/design/undeclared-member-preservation.md).
+
+- **`Node<'Msg>` gains `KeptMembers: Fuaran.UI.HostPrelude.KeptMembers`** — the node's one host-only slot: the members
+  its JSON carried that its shape does not declare, keyed by their path inside the node and stopping at a child node,
+  which holds its own. Never read, never rendered, written back on encode. A consumer that constructs a `Node` with a
+  FULL record literal (`{ Id = …; Kind = …; Accessibility = …; ExtraAttributes = …; Fallback = …; Motion = …;
+  State = …; Style = …; Tooltip = …; Visible = … }`) stops compiling (FS0764) until it names the field. C# positional
+  construction of `Node` gains the argument too. The generated smart constructors, the `Fuaran.*` builders, the
+  defaults and copy-and-update (`{ node with … }`) are unchanged; the C# facade's positional `FsNode` constructions
+  were updated in-tree.
+- **New in `Fuaran.UI.HostPrelude`.** The type `KeptMembers`, whose representation is private, and the module
+  `KeptMembers`: `empty`, `entries`, `isEmpty` and `under`. There is no public way to add an entry: only the decoder
+  fills a slot and the apply engine moves entries, so no constructor produces a kept member.
+- **New in `Fuaran.UI.Ops.Types`.** The record `KeptOp<'Msg>` (`Op`, `KeptMembers`) and the module `KeptOp` with
+  `ofOp`: a decoded op and its kept members. `TreeOp` keeps its shape.
+- **New functions.** `JsonDecode.decodeOpKept` and `JsonDecode.decodeOpKeptWithPolicy`, `Apply.applyKept` (all in
+  `Fuaran.UI.Ops`), `CanonicalJson.encodeOpKept` (`Fuaran.UI.OpStream.Abstractions`), and `TreeOpDiff.tryDiffKept` and
+  `TreeOpDiff.diffKept` (`Fuaran.UI.OpStream.Replay`). A caller that replays ops through the hash chain and must
+  reproduce a producer's op bytes decodes with `decodeOpKept` and re-encodes with `encodeOpKept`. Also new and
+  generated from `idl.json`: the module `Fuaran.UI.Ops.WireShapes`, the declared members of every object shape. Each
+  is additive; the existing entry points keep their signatures.
+- **`PreEmitDefect` gains `KeptMember of nodeId: string * path: string`**, validator code **FUARAN175 (Warning)**: a
+  node carries a member its shape does not declare. Advisory, never an error. An exhaustive match over
+  `PreEmitDefect` stops compiling until it adds the arm.
+- **Behaviour.** The default decoder keeps an undeclared member at every node position instead of dropping it, and
+  the canonical encoder writes it back among the object's declared keys in ordinal order, re-encoded canonically; a
+  member whose value is or holds `null` is dropped. A kept member is part of the canonical encoding, so it counts in
+  the content hash, the op-stream chain, the digests, structural equality and the diff: `TreeOpDiff.diff` of two
+  trees that differ only in kept members is no longer empty. Plain `Apply.apply` applies the object-local rule to a
+  decoded tree's kept members (an op that writes a declared member replaces the kept members inside it, `EditNode`
+  drops the kind's, `RemoveNode` removes the node's); an op an author built brings none. Under a kind-admission policy
+  narrower than admit-all, a kept member whose value holds a `$type` object at any depth is refused with
+  `KIND_NOT_ADMITTED` at the member's path; plain values are kept. A tree that carries no undeclared member decodes,
+  encodes and hashes byte-identically.
+
+**What a consumer must do.**
+
+- A full `Node` record literal adds `KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty`, or is rewritten to build
+  from a smart constructor or the default node with copy-and-update.
+- A C# positional construction of `Node` passes `Fuaran.UI.HostPrelude.KeptMembersModule.empty` in the new position,
+  or moves to the `Fuaran.UI.CSharp` factories.
+- An exhaustive match over `PreEmitDefect` adds a `KeptMember(nodeId, path)` arm.
+- A host that compared re-encoded bytes or hashes against a tree from which an undeclared member used to be dropped
+  now sees that member kept, which is the point of the change.
 
 ### Unreleased tidy — one escaper per job on the server path (additive)
 
