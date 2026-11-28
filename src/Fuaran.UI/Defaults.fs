@@ -720,6 +720,7 @@ let private errorBoundaryPlaceholder<'Msg> : Node<'Msg> =
       Motion = Option.None
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = Option.None
       Visible = Option.None }
 
@@ -763,6 +764,7 @@ let private fragmentPlaceholder<'Msg> : Node<'Msg> =
       Motion = Option.None
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = Option.None
       Visible = Option.None }
 

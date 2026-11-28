@@ -152,6 +152,7 @@ let private dispatchingButton: Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

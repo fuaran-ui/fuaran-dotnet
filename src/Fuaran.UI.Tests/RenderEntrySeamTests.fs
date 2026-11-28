@@ -59,6 +59,7 @@ let private mkNode (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

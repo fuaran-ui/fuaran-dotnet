@@ -3039,6 +3039,7 @@ module Kind =
               Kind = kind
               Accessibility = None
               ExtraAttributes = None
+              KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
               Fallback = None
               Motion = None
               State = None

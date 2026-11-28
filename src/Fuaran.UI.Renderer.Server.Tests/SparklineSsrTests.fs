@@ -43,6 +43,7 @@ let private sparkline (series: float list option) : Node<obj> =
       Accessibility = Option.None
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = Option.None
       Visible = None
       Motion = Option.None

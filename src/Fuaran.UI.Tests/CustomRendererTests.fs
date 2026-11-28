@@ -106,6 +106,7 @@ let tests =
                     Motion = Defaults.Motion.none
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 

@@ -1631,6 +1631,7 @@ let private placeholderClosureNode: Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -9858,6 +9859,7 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Motion = None
                   Fallback = fallback
                   ExtraAttributes = None
+                  KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                   Tooltip = tooltip
                   Visible = visible }
         | Error e, _, _, _, _, _, _, _

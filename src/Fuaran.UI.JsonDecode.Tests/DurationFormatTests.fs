@@ -98,6 +98,7 @@ let wireRoundTrips =
                     Motion = None
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 
@@ -131,6 +132,7 @@ let wireRoundTrips =
                     Motion = None
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 
@@ -182,6 +184,7 @@ let wireRoundTrips =
                     Motion = None
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 

@@ -168,6 +168,7 @@ internal abstract class NodeBuilder
             Fs.None<Accessibility>(),
             Fs.None<FSharpMap<string, string>>(),
             Fs.None<Node<object>>(),
+            global::Fuaran.UI.HostPrelude.KeptMembersModule.empty,
             Fs.None<Motion>(),
             Fs.None<StateBehaviour<object>>(),
             Fs.None<SemanticStyle>(),

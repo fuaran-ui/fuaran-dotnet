@@ -414,6 +414,7 @@ let private bareNode (id: string) (kind: NodeKind<Msg>) : Node<Msg> =
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

@@ -970,6 +970,7 @@ let private directionLeaf (id: string) (direction: TextDirection) (text: string)
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -1367,6 +1368,7 @@ let private boundSparkline: Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

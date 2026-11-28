@@ -96,6 +96,7 @@ let private sampleTree: Node<obj> =
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Motion = None
       State = None
       Style = None
