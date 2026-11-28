@@ -96,7 +96,7 @@
       "encoder": "and private encSwitchSpec<'Msg> (s: SwitchSpec<'Msg>) : JVal =\u000a    Canonical.typed \"Switch\" ([ Some(\"cases\", JArr(List.map encSwitchCase s.Cases)); Some(\"default\", encNode s.Default); (match s.On with | Binding.State (key, None) -> Some(\"stateKey\", JStr key) | on -> Some(\"on\", (encBinding JStr) on)); (s.AutoAdvanceMs |> Option.map (fun v -> \"autoAdvanceMs\", JInt v)) ] |> List.choose id)",
       "kind": "Switch",
       "mapMsg": "and private mapMsgSwitchSpec<'Msg, 'Msg2> (f: 'Msg -> 'Msg2) (v: SwitchSpec<'Msg>) : SwitchSpec<'Msg2> =\u000a    ({ Cases = List.map (fun __x -> mapMsgSwitchCase f __x) v.Cases; Default = mapMsg f v.Default; On = v.On; AutoAdvanceMs = v.AutoAdvanceMs }: SwitchSpec<'Msg2>)",
-      "mk": "let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =\u000a    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }",
+      "mk": "let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =\u000a    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }",
       "recordFields": [
         {
           "name": "autoAdvanceMs",

@@ -43,6 +43,7 @@
     <!-- Phase 2063: the pre-2063 diff as a test oracle, and the byte-equality law over the corpus. -->
     <Compile Include="TreeOpDiffPre2063.fs" />
     <Compile Include="TreeOpDiffEquivalenceTests.fs" />
+    <Compile Include="KeptMemberCorpusTests.fs" />
     <Compile Include="CheckpointTests.fs" />
     <Compile Include="CoreSnapshotTests.fs" />
     <Compile Include="ChainMigrationTests.fs" />

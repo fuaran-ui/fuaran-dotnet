@@ -2513,9 +2513,93 @@ let private rewriteNode
 let private setNode (target: NodeId) (edit: Node<'Msg> -> Node<'Msg>) (root: Node<'Msg>) =
     rewriteNode target (edit >> Ok) root
 
-let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+// ─── Kept members under an op (WIRE_FORMAT §15.8, Phase 2880; D45 q4) ───────
+//
+// A node's kept members are keyed by their path inside the node. An op that writes a
+// declared member replaces its whole value, so the entries under it go, and the op's own
+// value brings the entries its bytes carried: the op's slot (`KeptOp`) for a record or a
+// kind it carries, the value itself for an `UpdateProp` wire value. `EditNode` replaces the
+// kind's entries with the new kind's. The structural ops touch no entry of a parent: a child
+// node holds its own, and no structural op rebuilds a list that holds no nodes, so no entry
+// is ever re-keyed. No op names a kept member: `UpdateProp` resolves only declared fields.
+
+type private Kept = (PathSegment list * JVal) list
+
+/// The op slot's entries under `prefix`, re-rooted at it.
+let private keptUnder (prefix: PathSegment list) (kept: Kept) : Kept =
+    let n = List.length prefix
+
+    kept
+    |> List.choose (fun (p, v) ->
+        if List.length p > n && List.truncate n p = prefix then
+            Some(List.skip n p, v)
+        else
+            None)
+
+/// Replace the node's entries under `prefix` with `replacement`.
+let private rekeep (prefix: PathSegment list) (replacement: Kept) (n: Node<'Msg>) : Node<'Msg> =
+    if replacement.IsEmpty && Fuaran.UI.HostPrelude.KeptMembers.isEmpty n.KeptMembers then
+        n
+    else
+        { n with
+            KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.replaceUnder prefix replacement n.KeptMembers }
+
+/// The declared wire member a PascalCase op path segment names on an object of `members`,
+/// and its shape: `idl.json`'s own spelling, so the entries under it are found exactly.
+let private wireMember
+    (members: (string * WireShapes.Shape) list)
+    (field: string)
+    : (string * WireShapes.Shape) option =
+    members
+    |> List.tryFind (fun (name, _) -> System.String.Equals(name, field, System.StringComparison.OrdinalIgnoreCase))
+
+/// The wire path inside the node of the member an `UpdateProp` (or a `ReplaceBinding` slot)
+/// writes, and that member's declared shape, resolved through the declared-member table from
+/// the target's kind. `None` when a segment is not declared there.
+let private writtenMember (kind: NodeKind<'Msg>) (segs: PathSeg list) : (PathSegment list * WireShapes.Shape) option =
+    let rec walk (members: (string * WireShapes.Shape) list) (segs: PathSeg list) (acc: PathSegment list) =
+        match segs with
+        | [] -> None
+        | seg :: rest ->
+            match wireMember members seg.Field with
+            | None -> None
+            | Some(name, shape) ->
+                let acc = PathSegment.Key name :: acc
+
+                let acc, shape =
+                    match seg.Index, shape with
+                    | Some i, WireShapes.Shape.List item -> PathSegment.Index i :: acc, Some item
+                    | Some _, _ -> acc, None
+                    | None, s -> acc, Some s
+
+                match rest, shape with
+                | [], Some s -> Some(List.rev acc, s)
+                | [], None -> None
+                | _, Some(WireShapes.Shape.Record r) ->
+                    match Map.tryFind r WireShapes.records with
+                    | Some inner -> walk inner rest acc
+                    | None -> None
+                | _ -> None
+
+    Map.tryFind (Fuaran.UI.KindPolicy.wireKindName kind) WireShapes.kinds
+    |> Option.bind (fun members -> walk members segs [ PathSegment.Key "kind" ])
+
+/// What an `UpdateProp` value brings: the undeclared members of a structured wire value,
+/// against the declared shape of the member it is written to. A native value brings none.
+let private keptOfValue (shape: WireShapes.Shape) (value: PropValue) : Kept =
+    match shape, value with
+    | WireShapes.Shape.Leaf, _
+    | _, PropValue.Native _ -> []
+    | s, PropValue.Wire jv -> JsonDecode.keptInValue s jv
+
+/// One op, with the op's kept-member slot (`[]` for an op an author built). The block above
+/// says what each op does to a node's kept members.
+let rec private applyOne (kept: Kept) (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
     match op with
-    | TreeOp.EditNode(target, newKind) -> setNode target (fun n -> { n with Kind = newKind }) root
+    | TreeOp.EditNode(target, newKind) ->
+        let brought = keptUnder [ PathSegment.Key "newKind" ] kept
+
+        setNode target (fun n -> { n with Kind = newKind } |> rekeep [ PathSegment.Key "kind" ] brought) root
 
     | TreeOp.UpdateProp(target, path, value) ->
         let v = PropValue.toObj value
@@ -2540,7 +2624,13 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 
             root
             |> rewriteNode target (fun targetNode ->
-                let finish newKind = Ok { targetNode with Kind = newKind }
+                // The written member's entries go, and the value brings its own (§15.8).
+                let finish newKind =
+                    let written = { targetNode with Kind = newKind }
+
+                    match writtenMember targetNode.Kind segs with
+                    | Some(at, shape) -> Ok(rekeep at (keptOfValue shape value) written)
+                    | None -> Ok written
 
                 let valueTypeMismatch (detail: string) =
                     Error(
@@ -2595,7 +2685,17 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
         root
         |> rewriteNode target (fun targetNode ->
             match dispatchReplaceBinding slot binding targetNode.Kind with
-            | Ok newKind -> Ok { targetNode with Kind = newKind }
+            | Ok newKind ->
+                let written = { targetNode with Kind = newKind }
+
+                match
+                    writtenMember
+                        targetNode.Kind
+                        [ { Field = canonicaliseField slot
+                            Index = None } ]
+                with
+                | Some(at, _) -> Ok(rekeep at (keptUnder [ PathSegment.Key "binding" ] kept) written)
+                | None -> Ok written
             | Error err ->
                 // Repair the slotNotFound id placeholder with the real target id.
                 match err.Code with
@@ -2613,7 +2713,9 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             else
                 Some style
 
-        setNode target (fun n -> { n with Style = normalised }) root
+        let brought = keptUnder [ PathSegment.Key "style" ] kept
+
+        setNode target (fun n -> { n with Style = normalised } |> rekeep [ PathSegment.Key "style" ] brought) root
 
     | TreeOp.PatchStyle(target, delta) ->
         // Phase 2291 — a patch over the node's CURRENT style (an absent style is
@@ -2641,7 +2743,9 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             else
                 Some state
 
-        setNode target (fun n -> { n with State = normalised }) root
+        let brought = keptUnder [ PathSegment.Key "state" ] kept
+
+        setNode target (fun n -> { n with State = normalised } |> rekeep [ PathSegment.Key "state" ] brought) root
 
     | TreeOp.UpdateAccessibility(target, accessibility) ->
         // Phase 2527 — the same normalisation again: a record setting no field is
@@ -2658,9 +2762,19 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
 
         let normalised = if empty then None else Some accessibility
 
-        setNode target (fun n -> { n with Accessibility = normalised }) root
+        let brought = keptUnder [ PathSegment.Key "accessibility" ] kept
 
-    | TreeOp.UpdateTooltip(target, tooltip) -> setNode target (fun n -> { n with Tooltip = tooltip }) root
+        setNode
+            target
+            (fun n ->
+                { n with Accessibility = normalised }
+                |> rekeep [ PathSegment.Key "accessibility" ] brought)
+            root
+
+    | TreeOp.UpdateTooltip(target, tooltip) ->
+        let brought = keptUnder [ PathSegment.Key "tooltip" ] kept
+
+        setNode target (fun n -> { n with Tooltip = tooltip } |> rekeep [ PathSegment.Key "tooltip" ] brought) root
 
     // The structural legs run through `Fuaran.Core.Ops` (Phase 379). See the
     // Core.Ops delegation block above for the witnesses + rejection mapping.
@@ -2679,7 +2793,7 @@ let rec private applyOne (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Ms
             match remaining with
             | [] -> Ok state
             | next :: rest ->
-                match applyOne next state with
+                match applyOne (keptUnder [ PathSegment.Key "ops"; PathSegment.Index idx ] kept) next state with
                 | Ok updated -> loop (idx + 1) updated rest
                 | Error err ->
                     Error
@@ -2920,17 +3034,9 @@ let private checkInstalledIds (op: TreeOp<'Msg>) (tree: Node<'Msg>) : Result<Nod
 
 // ─── Public entry ──────────────────────────────────────────────────────────
 
-/// Apply a single tree-op against `root`, returning either the updated tree
-/// or a structured §4d AI-recovery error. Callers fold this themselves to
-/// apply an ordered op list; for atomic application of multiple ops, wrap
-/// in `TreeOp.Batch`.
-///
-/// The result of an op that can grow the tree is checked against the §21
-/// limits (`LimitExceeded`), then the result of an op that installs nodes is
-/// checked for an installed id held twice (`DuplicateNodeId`, §8.1). A `Batch`
-/// is checked once, on the tree it produces.
-let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
-    match applyOne op root with
+/// One op with its kept-member slot, then the §21 limits and the installed-id check.
+let private applyWith (kept: Kept) (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    match applyOne kept op root with
     | Error err -> Error err
     | Ok updated ->
         let limited =
@@ -2945,3 +3051,25 @@ let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError>
                 Ok updated
 
         limited |> Result.bind (checkInstalledIds op)
+
+/// Apply a single tree-op against `root`, returning either the updated tree
+/// or a structured §4d AI-recovery error. Callers fold this themselves to
+/// apply an ordered op list; for atomic application of multiple ops, wrap
+/// in `TreeOp.Batch`.
+///
+/// The result of an op that can grow the tree is checked against the §21
+/// limits (`LimitExceeded`), then the result of an op that installs nodes is
+/// checked for an installed id held twice (`DuplicateNodeId`, §8.1). A `Batch`
+/// is checked once, on the tree it produces.
+///
+/// A node's kept members (WIRE_FORMAT §15.8) move as §15.8 rules: the entries under a
+/// member the op writes go, and `EditNode` drops the kind's; an op an author built brings
+/// none (`applyKept` applies a decoded op with the ones it brings).
+let apply (op: TreeOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> = applyWith [] op root
+
+/// `apply` for a decoded op with its kept-member slot (`JsonDecode.decodeOpKept`, Phase
+/// 2880): the op's value brings the kept members its bytes carried, so an `EditNode`
+/// installs its new kind's, and an `UpdateAccessibility`, `UpdateState`, `UpdateStyle`,
+/// `UpdateTooltip` or `ReplaceBinding` the ones of the record or case it writes.
+let applyKept (op: KeptOp<'Msg>) (root: Node<'Msg>) : Result<Node<'Msg>, ApplyError> =
+    applyWith (Fuaran.UI.HostPrelude.KeptMembers.entries op.KeptMembers) op.Op root

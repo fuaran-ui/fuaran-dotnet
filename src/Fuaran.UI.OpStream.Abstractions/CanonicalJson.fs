@@ -182,11 +182,132 @@ let private bindingJson (b: Binding<obj>) : JVal =
 // to values. Adding a Node-bearing payload to any of them means adding the
 // projection in the same change.
 
-let private nodeJson<'Msg> (n: Node<'Msg>) : JVal =
-    Fuaran.UI.Generated.encodeNodeJson (Fuaran.UI.Ops.Introspect.canonicalForm n)
+// ─── Phase 2880 — kept members (WIRE_FORMAT §15.8) ─────────────────────────
+//
+// A node's `KeptMembers` hold the members its JSON carried that its shape does not
+// declare, by path inside the node. The generated encoder writes none of them (the slot is
+// host-only), so they are spliced into its `JVal` here, before render; the renderer sorts
+// every object's keys, so each lands at its ordinal place among the declared ones (§15.8
+// rule 1). A child node's members are its own: the walk below finds each child's place
+// through `NodeChildren.slots`, the one enumeration of where a node holds another.
 
+/// The wire path of a `NodeChildren` slot label (`fallback`, `state.onLoading`,
+/// `Box.children[2]`, `ErrorBoundary.child`, `Switch.cases[0].child`, `Switch.default`,
+/// `FragmentRef.args[k]`, `Mount.inputs[k]`). A label that begins with a kind's name is a
+/// position inside `kind`; a slot argument's node is its entry's `tree`.
+let private slotWirePath (label: string) : PathSegment list option =
+    let rec tokens (text: string) (acc: PathSegment list) : PathSegment list option =
+        let text = if text.StartsWith "." then text.Substring 1 else text
+
+        if text = "" then
+            Some(List.rev acc)
+        else
+            let stop = text.IndexOfAny [| '.'; '[' |]
+
+            let name, tail =
+                if stop < 0 then
+                    text, ""
+                else
+                    text.Substring(0, stop), text.Substring stop
+
+            let acc = PathSegment.Key name :: acc
+
+            if tail.StartsWith "[" then
+                match tail.IndexOf ']' with
+                | close when close > 0 ->
+                    let inner = tail.Substring(1, close - 1)
+                    let after = tail.Substring(close + 1)
+
+                    match name with
+                    | "args"
+                    | "inputs" -> tokens after (PathSegment.Key "tree" :: PathSegment.Key inner :: acc)
+                    | _ ->
+                        match Int32.TryParse inner with
+                        | true, ix -> tokens after (PathSegment.Index ix :: acc)
+                        | _ -> None
+                | _ -> None
+            else
+                tokens tail acc
+
+    match label.IndexOf '.' with
+    | dot when dot > 0 && Char.IsUpper label.[0] -> tokens (label.Substring(dot + 1)) [ PathSegment.Key "kind" ]
+    | _ -> tokens label []
+
+/// `j` with `f` applied to the value at `path`; a path that does not resolve leaves `j`.
+let rec private updateAt (path: PathSegment list) (f: JVal -> JVal) (j: JVal) : JVal =
+    match path, j with
+    | [], _ -> f j
+    | PathSegment.Key k :: rest, JObj members ->
+        JObj(
+            members
+            |> List.map (fun (mk, v) -> if mk = k then mk, updateAt rest f v else mk, v)
+        )
+    | PathSegment.Index i :: rest, JArr items ->
+        JArr(items |> List.mapi (fun ix v -> if ix = i then updateAt rest f v else v))
+    | _ -> j
+
+/// `j` with the member at `path` set to `v`. The member's object must exist: an entry whose
+/// object an op replaced is gone from the slot already (§15.8, what an op does).
+let private setAt (path: PathSegment list) (v: JVal) (j: JVal) : JVal =
+    match List.rev path with
+    | PathSegment.Key k :: revParent ->
+        updateAt
+            (List.rev revParent)
+            (fun o ->
+                match o with
+                | JObj members -> JObj((members |> List.filter (fun (mk, _) -> mk <> k)) @ [ k, v ])
+                | other -> other)
+            j
+    | _ -> j
+
+/// A node's encoding with every node's kept members written back, its own and its children's.
+let rec private withKept<'Msg> (n: Node<'Msg>) (j: JVal) : JVal =
+    let own =
+        Fuaran.UI.HostPrelude.KeptMembers.entries n.KeptMembers
+        |> List.fold (fun acc (path, v) -> setAt path v acc) j
+
+    Fuaran.UI.NodeChildren.slots n
+    |> List.fold
+        (fun acc slot ->
+            match slotWirePath slot.Label with
+            | Some path -> updateAt path (withKept slot.Node) acc
+            | None -> acc)
+        own
+
+let private nodeJson<'Msg> (n: Node<'Msg>) : JVal =
+    let canonical = Fuaran.UI.Ops.Introspect.canonicalForm n
+    withKept canonical (Fuaran.UI.Generated.encodeNodeJson canonical)
+
+/// A kind's encoding with the kept members of every node it holds written back (an
+/// `EditNode`'s new kind can hold children). The kind's own kept members ride in the op's
+/// slot, since a kind alone has no node to hold them.
 let private nodeKindJson<'Msg> (k: NodeKind<'Msg>) : JVal =
-    Fuaran.UI.Generated.encodeNodeKindJson (Fuaran.UI.Ops.Introspect.canonicalFormKind k)
+    let canonical = Fuaran.UI.Ops.Introspect.canonicalFormKind k
+    let encoded = Fuaran.UI.Generated.encodeNodeKindJson canonical
+
+    let scratch: Node<'Msg> =
+        { Id = "«kind-scratch»"
+          Kind = canonical
+          State = None
+          Style = None
+          Accessibility = None
+          Motion = None
+          Fallback = None
+          ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
+          Tooltip = None
+          Visible = None }
+
+    match Fuaran.UI.NodeChildren.slots scratch with
+    | [] -> encoded
+    | slots ->
+        slots
+        |> List.fold
+            (fun acc slot ->
+                match slotWirePath slot.Label with
+                | Some(PathSegment.Key "kind" :: path) -> updateAt path (withKept slot.Node) acc
+                | _ -> acc)
+            encoded
 
 /// `StateBehaviour` carries `onLoading` / `onEmpty` **Node** payloads, so it
 /// needs the §16 projection exactly as the two encoders above do — it once
@@ -204,11 +325,23 @@ let private nodeKindJson<'Msg> (k: NodeKind<'Msg>) : JVal =
 /// there is no absence to collapse to. `OnError` is `ErrorPayload -> Node`:
 /// no node to project until it is applied. Nested state inside the spliced
 /// nodes is reached by `canonicalForm`'s own recursion.
+///
+/// The two nodes keep their own kept members (Phase 2880), as every node does.
 let private stateBehaviourJson<'Msg> (s: StateBehaviour<'Msg>) : JVal =
+    let onLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
+    let onEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
+
+    let keep (key: string) (n: Node<'Msg> option) (j: JVal) =
+        match n with
+        | Some node -> updateAt [ PathSegment.Key key ] (withKept node) j
+        | None -> j
+
     Fuaran.UI.Generated.encodeStateBehaviourJson
         { s with
-            OnLoading = s.OnLoading |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm
-            OnEmpty = s.OnEmpty |> Option.map Fuaran.UI.Ops.Introspect.canonicalForm }
+            OnLoading = onLoading
+            OnEmpty = onEmpty }
+    |> keep "onLoading" onLoading
+    |> keep "onEmpty" onEmpty
 
 /// Phase 2291 — the `PatchStyle` payload: exactly the members the delta sets,
 /// each a bare token string. Unlike the `SemanticStyle` encoder a default token
@@ -378,6 +511,17 @@ let encodeNodeForTransport<'Msg> (node: Node<'Msg>) : Result<string, LossyPath l
 /// op-stream sinks that persist as JSON text (Sqlite `op_json` column).
 [<MethodImpl(MethodImplOptions.NoInlining)>]
 let encodeOp<'Msg> (op: TreeOp<'Msg>) : string = renderOp (treeOpJson op)
+
+/// Encode a decoded op with its kept members written back (WIRE_FORMAT §15.8, Phase 2880):
+/// `encodeOp`'s bytes plus each member of the op's slot at its ordinal place, so a host that
+/// decodes a replicated op with `JsonDecode.decodeOpKept` and re-encodes it here reproduces
+/// the producer's bytes, and the hash chain with them. An op whose slot is empty encodes
+/// exactly as `encodeOp`.
+[<MethodImpl(MethodImplOptions.NoInlining)>]
+let encodeOpKept<'Msg> (op: KeptOp<'Msg>) : string =
+    Fuaran.UI.HostPrelude.KeptMembers.entries op.KeptMembers
+    |> List.fold (fun acc (path, v) -> setAt path v acc) (treeOpJson op.Op)
+    |> renderOp
 
 /// Encode an `OpResultEnvelope` to its canonical JSON string. Used by the
 /// Sqlite sink for the `result_envelope_json` column.

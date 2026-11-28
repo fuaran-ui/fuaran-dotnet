@@ -97,6 +97,7 @@ let rec private nodesUnder (op: TreeOp<obj>) : Node<obj> list =
             Motion = None
             Fallback = None
             ExtraAttributes = None
+            KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
             Tooltip = None
             Visible = None } ]
     | _ -> []

@@ -1621,6 +1621,7 @@ module Fuaran =
           Motion = Defaults.Motion.none
           Fallback = None
           ExtraAttributes = Option.None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = Option.None
           Visible = Option.None }
 

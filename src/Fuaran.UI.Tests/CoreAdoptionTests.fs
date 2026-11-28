@@ -131,6 +131,7 @@ let private mkStack (id: string) (kids: EqNode list) : EqNode =
           Motion = Option.None
           Fallback = None
           ExtraAttributes = Option.None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None }
 
@@ -150,6 +151,7 @@ let private mkSpacer (id: string) : EqNode =
           Motion = Option.None
           Fallback = None
           ExtraAttributes = Option.None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None }
 
@@ -791,6 +793,7 @@ module Columnar =
           Motion = Fuaran.UI.Defaults.Motion.none
           Fallback = None
           ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None }
 

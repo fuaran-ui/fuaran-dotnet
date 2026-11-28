@@ -353,6 +353,14 @@ type PreEmitDefect =
     /// declared order would move nothing and say something false. Carries the
     /// node id.
     | ChartSortByTemporal of nodeId: string
+    /// **FUARAN175 (Warning)**. A node carries a member its shape does not
+    /// declare, read past on decode and kept on re-encode (WIRE_FORMAT §15.8,
+    /// Phase 2880; D45). Advisory, never an error: the member is not judged,
+    /// rendered or followed here, so a pass says nothing about it, and the
+    /// warning is what keeps an author's mistaken member (the Phase 2536 `Text`
+    /// field written like the `Text` node) from round-tripping unremarked.
+    /// Carries the node id and the member's `$`-rooted path inside the node.
+    | KeptMember of nodeId: string * path: string
     /// **FUARAN089 (Warning)**. `Stacked = true` on a `ChartKind` where
     /// stacking is meaningless (`Line` / `Scatter` / `Pie`) — the lowering
     /// ignores the flag (Phase 637), so the emission carries dead intent;
@@ -2469,6 +2477,13 @@ module DefectCodes =
               "Phase 2654"
           )
           row (
+              "KeptMember",
+              "FUARAN175",
+              Severity.Warning,
+              "node '{nodeId}' carries '{path}', a member its shape does not declare — it is kept on re-encode and never read here (WIRE_FORMAT 15.8); drop it, or check the spelling against the declared members (Phase 2880)",
+              "Phase 2880"
+          )
+          row (
               "ChartStackedMeaningless",
               "FUARAN089",
               Severity.Warning,
@@ -3464,6 +3479,7 @@ let private describeArgs (d: PreEmitDefect) : string * (string * string) list =
     | PreEmitDefect.ChartIntervalSeriesShape(nodeId, seriesCount) ->
         "ChartIntervalSeriesShape", [ "nodeId", nodeId; "seriesCount", string seriesCount ]
     | PreEmitDefect.ChartSortByTemporal nodeId -> "ChartSortByTemporal", [ "nodeId", nodeId ]
+    | PreEmitDefect.KeptMember(nodeId, path) -> "KeptMember", [ "nodeId", nodeId; "path", path ]
     | PreEmitDefect.ChartStackedMeaningless(nodeId, kind) ->
         "ChartStackedMeaningless", [ "nodeId", nodeId; "kind", kind ]
     | PreEmitDefect.InertEditableGrid nodeId -> "InertEditableGrid", [ "nodeId", nodeId ]
@@ -4479,6 +4495,19 @@ module private NodeRules =
         // the renderer floor is what covers the runtime case, on every host,
         // which is the whole point of the two layers agreeing.
         emissionGrammarDefects n |> List.iter defects.Add
+
+        // FUARAN175 — each kept member, by its path inside the node (§15.8). A
+        // node only a decoder built can carry one: no constructor writes the slot.
+        for path, _ in Fuaran.UI.HostPrelude.KeptMembers.entries n.KeptMembers do
+            let text =
+                path
+                |> List.map (fun segment ->
+                    match segment with
+                    | Fuaran.Core.PathSegment.Key k -> "." + k
+                    | Fuaran.Core.PathSegment.Index i -> "[" + string i + "]")
+                |> String.concat ""
+
+            defects.Add(PreEmitDefect.KeptMember(n.Id, "$" + text))
 
 
 /// Container kinds: boxes, tabs, disclosures, modals and popovers, skeletons.

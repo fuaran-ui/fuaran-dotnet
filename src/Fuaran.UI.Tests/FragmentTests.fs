@@ -144,6 +144,7 @@ let tests =
                     Motion = Option.None
                     Fallback = None
                     ExtraAttributes = Option.None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 

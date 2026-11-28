@@ -106,6 +106,7 @@ let private grid (src: Binding<Row seq>) (columns: ColumnErased<obj> list) : Nod
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

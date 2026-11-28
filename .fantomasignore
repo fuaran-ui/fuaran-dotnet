@@ -7,6 +7,8 @@
 # To change this file: change the vocabulary in src/Fuaran.UI.Idl/, then
 # `FUARAN_REGEN=1 dotnet run --project src/Fuaran.UI.Idl.Tests`.
 src/Fuaran.UI/Generated.fs
+# Phase 2880: the declared-member table, rendered from idl.json by src/Fuaran.UI.Idl/WireShapes.fs.
+src/Fuaran.UI.Ops/WireShapes.fs
 
 # Build output — never source. Some projects copy `.fs` sources into their own
 # output directory as test data (`src/Fuaran.UI.Tests/bin/**/renderer-sources/`),

@@ -112,6 +112,7 @@ let private node (id: string) (kind: NodeKind<obj>) (accessibility: Accessibilit
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

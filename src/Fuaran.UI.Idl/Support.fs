@@ -98,7 +98,7 @@ let private switchProjection: KindProjection =
       Mk =
         Some
             """let mkSwitch (id: string) (cases: SwitchCase<'Msg> list) (``default``: Node<'Msg>) (stateKey: string) : Node<'Msg> =
-    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }"""
+    { Id = id; Kind = NodeKind.Switch { Cases = cases; Default = ``default``; On = Binding.State(stateKey, None); AutoAdvanceMs = None }; Accessibility = None; ExtraAttributes = None; Fallback = None; KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty; Motion = None; State = None; Style = None; Tooltip = None; Visible = None }"""
       // Core 0.37.0 (fuaran-core Phase 403): a projection carries its own message map, because the
       // generator cannot construct the projected record. Phase 2188 supplies it, so the derived
       // `mapMsg` (see `derivations` below) covers `Switch` with the rest: the cases and the default

@@ -177,6 +177,7 @@ let private fuaranChipStrip () : Node<unit> =
                         Motion = Defaults.Motion.none
                         Fallback = None
                         ExtraAttributes = None
+                        KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                         Tooltip = None
                         Visible = None } ] }
 
