@@ -10,6 +10,64 @@ consequence.
 
 ---
 
+## 2026-11-28 — D45: an undeclared member is kept on its object, canonically, in every identity, and behind every gate
+
+**Decided (Phase 2879, ruled 2026-11-28).** A member that a kind does not declare is kept on re-encode, on every
+host and every kind. This entry records how. The design is
+[`design/undeclared-member-preservation.md`](design/undeclared-member-preservation.md): the options, the measured state
+of the five hosts, and the cost on each. Each of its four recommendations was accepted as written.
+
+1. **Carriage.** A kept member belongs to the JSON object it was read from. It travels with that object, it is
+   replaced when that object or an enclosing one is replaced, and it never moves onto another object. Python and Go
+   hold it in their existing structural map. The reference, TypeScript and Rust hosts hold one host-only slot per
+   `Node`, keyed by the member's path inside the node and stopping at child nodes, and one per decoded op. No record
+   or case changes shape. The slot's type has no public way to add an entry, so the typed authoring surfaces stay
+   closed.
+2. **Canonical form.** A kept member sorts among its object's declared keys by §2 rule 2's ordinal order. Its value is
+   re-encoded canonically under rule 12, never copied verbatim, so canonical input re-encodes to the producer's
+   bytes on every host. A member whose value is or holds `null` is dropped. It is neither refused nor written back.
+3. **Identity.** A kept member is part of the canonical encoding, so it counts in the content hash, the op-stream
+   chain, the teleport and attested-document digests, the diff and structural equality. No op names one. A change
+   confined to kept members lowers to `EditNode` when the member is inside the kind. When the member is on the node
+   envelope, it lowers to `RemoveNode` then `InsertChild` at the same index, or `ReplaceRoot` at the root.
+4. **Gates.**
+   - The default decoder keeps an undeclared member and never refuses one.
+   - The enumerated refusals stay refusals: the near-miss sets, the `Print` arm, retired members and the closed
+     artefacts.
+   - Under any kind admission policy narrower than admit-all, a kept member whose value contains a
+     `$type`-discriminated object at any depth is refused with `KIND_NOT_ADMITTED` at the member's path, and the
+     refusal is logged. Plain values are kept.
+   - Validators judge declared content only. The authoring-facing validator reports each kept member as a warning,
+     never an error, under one new warning code.
+   - No edit writes or names a kept member. An op that replaces a declared member replaces the kept members inside
+     it, and `RemoveNode` removes the node's.
+
+**Why.** An added optional member is the commonest way the format grows. Dropping it on an older host is silent data
+loss and a changed hash. It also breaks the attested-document digest, which §26.2 recomputes by decode then re-encode,
+whenever a document crosses between a host that keeps and a host that drops.
+
+**Rejected.**
+- **A slot on every record and case on the typed hosts.** It changes nothing the vectors can observe, and it breaks
+  every record literal and positional match for every consumer.
+- **Keeping the parsed document beside the tree.** The copy goes stale at the first op.
+- **Verbatim re-encoding.** It puts non-canonical bytes inside a canonical encoding.
+- **Excluding kept members from identity.** Every chain and signature would split between a host that declares the
+  member and one that keeps it.
+- **Ignoring kept members under a policy.** A hidden node would pass a policy-checked host to a consumer that
+  declares the member.
+- **Dropping every kept member under a policy.** Silent loss.
+- **The narrower rule (keep only when the reader is behind the document's declared version).** It is not available:
+  an added optional member takes no profile step (§15.4, Phase 1670), so a reader is never behind for one.
+
+**Consequence.** Phase 2880 implements this on all five hosts and in the specification. The vectors go in a corpus
+family of their own, demanded of each host as it declares the family covered, beginning with
+`lenient-2536-text-field-shaped-as-node`. Phase 2880 also reconciles §2.1, §15.3, §15.4 and §31.7 to keep, and closes
+the open note in 3.6.38. Keeping makes §15.4's optional-field row true; today four hosts falsify it. Until a host
+adopts, it keeps its present behaviour: the reference, TypeScript and Rust hosts drop at every position, Go keeps on
+node kinds only, and Python keeps on kinds and form fields.
+
+---
+
 ## 2026-11-27 — D44: the certified fragment library is offered to Fable consumers
 
 **Decided (Phase 2874).** `Fuaran.UI.Fragments` ships its F# sources under `fable/`, as `Fuaran.UI` and

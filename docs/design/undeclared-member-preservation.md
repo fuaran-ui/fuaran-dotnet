@@ -1,7 +1,8 @@
 # Keeping an undeclared member — the mechanics
 
-**Status:** design for Phase 2879. Its ruling section is **AWAITING THE OPERATOR'S RULING**. The
-implementation, on every host, is Phase 2880. This document changes no host and no wire member.
+**Status:** design for Phase 2879, **ruled 2026-11-28**: all four recommendations accepted as written
+(section 8, and `docs/DECISIONS.md` D45). The implementation, on every host, is Phase 2880. This
+document changes no host and no wire member.
 
 **The ruling this document builds on (2026-11-28).** A member that a kind does not declare is **kept** on
 re-encode, on every host and every kind. Nothing below reopens that ruling. This document answers how a
@@ -453,12 +454,16 @@ Three things contain that cost:
 
 ## 8. The ruling
 
-**AWAITING THE OPERATOR'S RULING.** One answer per question, dated. Until it is recorded here and in
-`docs/DECISIONS.md`, the recommendations above are proposals and Phase 2880 does not start.
+**Ruled 2026-11-28: each of the four recommendations is accepted as written.** The ruling is recorded
+here and as `docs/DECISIONS.md` D45. Phase 2880 is built from these answers and needs no further
+decision.
 
-| Question | Recommendation | Ruling | Date |
-|---|---|---|---|
-| 1. Carriage | object-local rule normative; Python and Go keep it in their structural map; reference, TypeScript and Rust keep one bag per node plus one per decoded op | awaiting | |
-| 2. Canonical form | ordinal place among declared keys; value re-encoded canonically under rule 12; a value holding null is dropped | awaiting | |
-| 3. Identity | in every identity (hash, chain, digests, diff, equality); diff floors `EditNode` and remove-then-insert | awaiting | |
-| 4. Gates | default decode keeps and never refuses; enumerated refusals unchanged; under a narrower policy a discriminated kept member is refused `KIND_NOT_ADMITTED`; validators report an advisory finding; no op names a kept member | awaiting | |
+| Question | Ruling | Date |
+|---|---|---|
+| 1. Carriage | Accepted as recommended. The object-local rule is normative. Python and Go keep the member in their structural map. The reference, TypeScript and Rust hosts keep one host-only slot per node, and the same per decoded op. No record or case changes shape. | 2026-11-28 |
+| 2. Canonical form | Accepted as recommended. A kept member takes its ordinal place among the declared keys. Its value is re-encoded canonically under rule 12. A member whose value holds a null is dropped. | 2026-11-28 |
+| 3. Identity | Accepted as recommended. A kept member counts in every hash, chain, digest, diff and equality. No op names one. A change confined to kept members lowers to `EditNode`, or to remove-then-insert for a member on the node envelope. | 2026-11-28 |
+| 4. Gates | Accepted as recommended. The default decoder keeps and never refuses an undeclared member, and the enumerated refusals stay. Under any policy narrower than admit-all, a kept member whose value contains a `$type` object is refused with `KIND_NOT_ADMITTED` at the member, and the refusal is logged; plain values are kept. Validators report each kept member as a warning, never an error, under one new warning code. No edit writes or names a kept member. | 2026-11-28 |
+
+The ruling also confirms the fact in section 7: an added optional member takes no profile step (§15.4),
+so the narrower rule is not available.
