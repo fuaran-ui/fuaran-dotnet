@@ -35,7 +35,7 @@ module Fuaran.UI.Renderer.Runtime
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.LayoutObserver
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 
 /// JS ↔ `JVal` structural bridges (Fable). Every seam where the renderer
 /// meets a dynamic JS value — resumed action payloads, AG Grid row objects,
@@ -123,7 +123,7 @@ type CustomRendererRegistration =
 // ─── DOM-mount Custom renderers (Phase 2513) ───────────────────────────────
 //
 // The second form a `Custom` renderer can take. The React form above hands the
-// renderer a `ReactElement`, so a third-party widget written against the plain
+// renderer a `RenderedElement`, so a third-party widget written against the plain
 // DOM had to be wrapped in a React component by the host before it could be
 // registered. A DOM mount needs no wrapper: the renderer gives it an element and
 // the node's props, and it hands back an update and a dispose.
@@ -174,7 +174,7 @@ module internal DomMountHost =
     open Fable.Core
 
     /// What a failed mount renders instead, built by whoever routed the failure.
-    type Failure = { View: unit -> ReactElement }
+    type Failure = { View: unit -> RenderedElement }
 
     /// How a DOM mount's failures reach the renderer. The `Custom` arm supplies
     /// it, because only the arm knows the node id, the telemetry sink and
@@ -196,16 +196,13 @@ module internal DomMountHost =
            fallback: string
            route: Route option |}
 
-    [<Import("createElement", "react")>]
-    let private createElement (componentFn: obj) (props: obj) : ReactElement = Util.jsNative
-
     [<Import("cloneElement", "react")>]
-    let private cloneElement (element: ReactElement) (props: obj) : ReactElement = Util.jsNative
+    let private cloneElement (element: RenderedElement) (props: obj) : RenderedElement = Util.jsNative
 
     [<Emit("($0 != null && $0.type === $1)")>]
-    let private isElementOf (element: ReactElement) (componentFn: obj) : bool = Util.jsNative
+    let private isElementOf (element: RenderedElement) (componentFn: obj) : bool = Util.jsNative
 
-    let private host (p: Props) : ReactElement =
+    let private host (p: Props) : RenderedElement =
         let element = React.useElementRef ()
         let handle = React.useRef (None: CustomDomHandle option)
         let delivered = React.useRef p.props
@@ -285,10 +282,14 @@ module internal DomMountHost =
     /// on the renderer's ids so a different `Custom` at the same place mounts
     /// afresh rather than inheriting this one's widget. Browser-only, like every
     /// element this renderer builds.
-    let element (moduleId: string) (componentId: string) (mount: CustomDomMount) : Map<string, JVal> -> ReactElement =
+    let element
+        (moduleId: string)
+        (componentId: string)
+        (mount: CustomDomMount)
+        : Map<string, JVal> -> RenderedElement =
         fun props ->
 #if FABLE_COMPILER
-            createElement
+            ReactInterop.createComponent
                 (box host)
                 (box
                     {| key = moduleId + "." + componentId
@@ -307,7 +308,7 @@ module internal DomMountHost =
 #endif
 
     /// True when `element` is a DOM mount's host element.
-    let isHost (element: ReactElement) : bool =
+    let isHost (element: RenderedElement) : bool =
 #if FABLE_COMPILER
         isElementOf element (box host)
 #else
@@ -316,12 +317,12 @@ module internal DomMountHost =
 #endif
 
     /// The host element with its failure route attached.
-    let withRoute (route: Route) (element: ReactElement) : ReactElement =
+    let withRoute (route: Route) (element: RenderedElement) : RenderedElement =
         cloneElement element (box {| route = Some route |})
 
 /// Registry for consumer-side custom renderers. Holds a
 /// dictionary keyed on `(moduleId, componentId)` whose values produce
-/// `ReactElement` from the typed-tree prop bag. The renderer's `Custom`
+/// `RenderedElement` from the typed-tree prop bag. The renderer's `Custom`
 /// arm consults `IFuaranRuntime.TryRenderCustom` first; this class is the
 /// canonical implementation hosts use to populate the runtime side.
 ///
@@ -350,7 +351,7 @@ type CustomRendererRegistry() =
     let renderers =
         System.Collections.Generic.Dictionary<
             string option * string * string,
-            (Map<string, JVal> -> ReactElement) * ContentHash option
+            (Map<string, JVal> -> RenderedElement) * ContentHash option
          >()
 
     /// Register (or replace) a renderer keyed on the module + component id, in
@@ -363,8 +364,12 @@ type CustomRendererRegistry() =
     /// omit the hash argument continue working — hash verification is
     /// opt-in on both sides.
     member _.Register
-        (moduleId: string, componentId: string, renderFn: Map<string, JVal> -> ReactElement, ?contentHash: ContentHash)
-        : unit =
+        (
+            moduleId: string,
+            componentId: string,
+            renderFn: Map<string, JVal> -> RenderedElement,
+            ?contentHash: ContentHash
+        ) : unit =
         renderers[(None, moduleId, componentId)] <- (renderFn, contentHash)
 
     /// Register (or replace) a renderer reachable ONLY from trees rendered under
@@ -375,7 +380,7 @@ type CustomRendererRegistry() =
             scope: string,
             moduleId: string,
             componentId: string,
-            renderFn: Map<string, JVal> -> ReactElement,
+            renderFn: Map<string, JVal> -> RenderedElement,
             ?contentHash: ContentHash
         ) : unit =
         renderers[(Some scope, moduleId, componentId)] <- (renderFn, contentHash)
@@ -403,8 +408,8 @@ type CustomRendererRegistry() =
     /// diagnostic (12.D, both pipelines via `eprintfn`), never a blank box. The
     /// four-way agreement (encode / client decode / server decode / hash)
     /// becomes structural — one contract value drives all of them.
-    member this.RegisterContract(contract: Fuaran.UI.CustomContract<'Props>, render: 'Props -> ReactElement) : unit =
-        let wrapped (props: Map<string, JVal>) : ReactElement =
+    member this.RegisterContract(contract: Fuaran.UI.CustomContract<'Props>, render: 'Props -> RenderedElement) : unit =
+        let wrapped (props: Map<string, JVal>) : RenderedElement =
             match contract.Decode props with
             | Ok p -> render p
             | Error e ->
@@ -437,7 +442,7 @@ type CustomRendererRegistry() =
     /// Look up a ROOT-scope renderer; returns `Some element` when registered,
     /// `None` when the renderer is not registered (the renderer's Custom arm then
     /// falls back to the labelled placeholder).
-    member this.TryRender(moduleId: string, componentId: string, props: Map<string, JVal>) : ReactElement option =
+    member this.TryRender(moduleId: string, componentId: string, props: Map<string, JVal>) : RenderedElement option =
         this.TryRenderInScope(None, moduleId, componentId, props)
 
     /// Scope-constrained lookup (Phase 783). `scope` is the render scope the
@@ -446,7 +451,7 @@ type CustomRendererRegistry() =
     /// would make the scoping advisory, which is the same as not having it.
     member _.TryRenderInScope
         (scope: string option, moduleId: string, componentId: string, props: Map<string, JVal>)
-        : ReactElement option =
+        : RenderedElement option =
         match renderers.TryGetValue((scope, moduleId, componentId)) with
         | true, (fn, _) -> Some(fn props)
         | false, _ -> None
@@ -458,13 +463,13 @@ type CustomRendererRegistry() =
     /// implementing `IFuaranRuntime` directly don't need updating.
     member this.TryGet
         (moduleId: string, componentId: string)
-        : ((Map<string, JVal> -> ReactElement) * ContentHash option) option =
+        : ((Map<string, JVal> -> RenderedElement) * ContentHash option) option =
         this.TryGetInScope(None, moduleId, componentId)
 
     /// Scope-constrained twin of `TryGet` (Phase 783). No cross-scope fallback.
     member _.TryGetInScope
         (scope: string option, moduleId: string, componentId: string)
-        : ((Map<string, JVal> -> ReactElement) * ContentHash option) option =
+        : ((Map<string, JVal> -> RenderedElement) * ContentHash option) option =
         match renderers.TryGetValue((scope, moduleId, componentId)) with
         | true, pair -> Some pair
         | false, _ -> None
@@ -779,8 +784,9 @@ type IFuaranRuntime =
     /// (consumer apps, the catalog demo, the test suite) consult their
     /// own registry. Implementations are responsible for whatever
     /// safety / sandboxing they want — the renderer trusts the returned
-    /// `ReactElement` verbatim.
-    abstract TryRenderCustom: moduleId: string * componentId: string * props: Map<string, JVal> -> ReactElement option
+    /// `RenderedElement` verbatim.
+    abstract TryRenderCustom:
+        moduleId: string * componentId: string * props: Map<string, JVal> -> RenderedElement option
 
     /// Parallel accessor exposing the registered
     /// renderer fn AND its optional `ContentHash` so the renderer can
@@ -797,7 +803,7 @@ type IFuaranRuntime =
     /// abstract member is a pre-1.0 minor add — direct implementers
     /// add the member alongside their `TryRenderCustom`.
     abstract TryGetCustomRenderer:
-        moduleId: string * componentId: string -> ((Map<string, JVal> -> ReactElement) * ContentHash option) option
+        moduleId: string * componentId: string -> ((Map<string, JVal> -> RenderedElement) * ContentHash option) option
 
     /// **Scope-constrained custom-renderer lookup (Phase 783) — the members the
     /// renderer's `Custom` arm actually calls.**
@@ -819,13 +825,14 @@ type IFuaranRuntime =
     /// `None` here loses custom rendering until it implements them. Unregistered
     /// must mean unreachable, and "unimplemented" is a kind of unregistered.
     abstract TryRenderCustomInScope:
-        scope: string option * moduleId: string * componentId: string * props: Map<string, JVal> -> ReactElement option
+        scope: string option * moduleId: string * componentId: string * props: Map<string, JVal> ->
+            RenderedElement option
 
     /// Scope-constrained twin of `TryGetCustomRenderer` (Phase 783). Same
     /// no-fallback contract as `TryRenderCustomInScope`.
     abstract TryGetCustomRendererInScope:
         scope: string option * moduleId: string * componentId: string ->
-            ((Map<string, JVal> -> ReactElement) * ContentHash option) option
+            ((Map<string, JVal> -> RenderedElement) * ContentHash option) option
 
     /// Deny-by-default seam at the renderer dispatch boundary (Phase 119,
     /// inverted by Phase 782). `runAction` consults this BEFORE invoking the
@@ -1058,8 +1065,12 @@ type MutableRuntime(allowAll: bool) =
     /// source hash; the renderer's pre-dispatch verification compares it
     /// against any hash the tree declares.
     member _.RegisterCustomRenderer
-        (moduleId: string, componentId: string, renderFn: Map<string, JVal> -> ReactElement, ?contentHash: ContentHash)
-        : unit =
+        (
+            moduleId: string,
+            componentId: string,
+            renderFn: Map<string, JVal> -> RenderedElement,
+            ?contentHash: ContentHash
+        ) : unit =
         match contentHash with
         | Some h -> registry.Register(moduleId, componentId, renderFn, h)
         | None -> registry.Register(moduleId, componentId, renderFn)

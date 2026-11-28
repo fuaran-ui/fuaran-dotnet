@@ -61,7 +61,7 @@ module Fuaran.UI.Renderer.TokensControl
 //  check is the server-side re-check in `Fuaran.UI.ServerDriven.FormValidation`.
 //
 //  ── Cross-pipeline ────────────────────────────────────────────────────────
-//  `React.useState` / `React.useRef` are Feliz `jsNative` declarations that
+//  `React.useState` / `React.useRef` are the renderer binding's `jsNative` declarations that
 //  compile on both .NET and Fable and throw on .NET if invoked. The renderer's
 //  .NET tests never mount React; the SSR floor for this control is the server
 //  renderer's single comma-separated `<input>`, which needs no script at all.
@@ -70,11 +70,8 @@ module Fuaran.UI.Renderer.TokensControl
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
 
 /// Everything the control needs, already resolved: the renderer keeps its
 /// `BindingSources` plumbing at the call site and this component holds only the
@@ -102,7 +99,7 @@ let private optionId (fieldId: string) (index: int) = fieldId + "-suggestion-" +
 /// The id a chip's remove button takes — used to restore focus after a removal.
 let private chipId (fieldId: string) (index: int) = fieldId + "-chip-" + string index
 
-let private renderTokens (props: TokensProps) : ReactElement =
+let private renderTokens (props: TokensProps) : RenderedElement =
     let query, setQuery = React.useState ""
     let isOpen, setOpen = React.useState false
     let activeIndex, setActiveIndex = React.useState (-1)
@@ -246,7 +243,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
                                     Html.button
                                         [ prop.id (chipId props.fieldId i)
                                           prop.className "fuaran-tokens-chip-remove"
-                                          prop.type'.button
+                                          prop.type' "button"
                                           // The accessible name says WHICH token
                                           // this button removes. A row of eight
                                           // buttons all named "Remove" is a row
@@ -265,7 +262,7 @@ let private renderTokens (props: TokensProps) : ReactElement =
     let entryElement =
         Html.input
             [ prop.className props.className
-              prop.type'.text
+              prop.type' "text"
               prop.id props.fieldId
               // `required` on the ENTRY box would demand text in a box that is
               // emptied on every commit — a form with three chips in it would
@@ -341,5 +338,5 @@ let private renderTokens (props: TokensProps) : ReactElement =
           prop.children ([ chipRow; entryElement ] @ suggestionList @ [ status ]) ]
 
 /// The public surface — `Render.fs` invokes this.
-let tokens (props: TokensProps) : ReactElement =
-    reactCreateElement (box renderTokens) (box props)
+let tokens (props: TokensProps) : RenderedElement =
+    ReactInterop.createComponent (box renderTokens) (box props)

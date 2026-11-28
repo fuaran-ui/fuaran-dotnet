@@ -104,8 +104,7 @@
 
 open Fable.Core
 open Fable.Core.JsInterop
-open Fable.React
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
 
 // ─── npm imports ─────────────────────────────────────────────────────
@@ -185,7 +184,7 @@ let private coerceToCellShape (currentVal: CellValue) (newVal: obj) : CellValue 
 
 let private buildColumnDef<'Msg>
     (runAction: Action<'Msg> -> unit)
-    (recurseRender: Node<'Msg> -> ReactElement)
+    (recurseRender: Node<'Msg> -> RenderedElement)
     // Phase 1523 — the composition's ambient destination policy, threaded from
     // `VisualisationContext` so this adapter's `Link` cell gates identically to
     // the first-party simple table's.
@@ -318,12 +317,12 @@ let private buildColumnDef<'Msg>
             [ "editable", box true; "valueSetter", box valueSetter ]
 
         | CellKindErased.Checkbox(getValue, onToggle) ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
                 let current = getValue row
 
                 Html.input
-                    [ prop.type'.checkbox
+                    [ prop.type' "checkbox"
                       prop.isChecked current
                       prop.onChange (fun (b: bool) ->
                           match onToggle with
@@ -335,7 +334,7 @@ let private buildColumnDef<'Msg>
         | CellKindErased.Button(label, onClick) ->
             let labelText = BindingResolver.resolveTextSource sources label
 
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
 
                 Html.button
@@ -351,7 +350,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.ButtonGroup buttons ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
 
                 Html.span
@@ -371,7 +370,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.Link(hrefFn, labelFn) ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
 
                 // Phase 1523 — the same two gates the simple-table `Link` cell
@@ -393,7 +392,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.Pill(labelFn, toneFn) ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
 
                 Html.span
@@ -406,7 +405,7 @@ let private buildColumnDef<'Msg>
             // Phase 750 — the declarative twin, through the same shared lowering the
             // simple-table cell uses, so the two grid backends cannot disagree about
             // an unmapped value.
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
                 let label, tone = GridModel.tonedPillOf row field toneMap defaultTone
 
@@ -417,7 +416,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.Progress(fractionFn, labelFn) ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
                 let f = fractionFn row
 
@@ -434,7 +433,7 @@ let private buildColumnDef<'Msg>
             [ "cellRenderer", box cellRenderer ]
 
         | CellKindErased.Custom render ->
-            let cellRenderer (p: obj) : ReactElement =
+            let cellRenderer (p: obj) : RenderedElement =
                 let row: Row = p?data
                 // The custom cell renderer captures a `row -> JVal` accessor
                 // shape; bridge the JS row object to the structured JVal and
@@ -503,7 +502,7 @@ let renderGridWithReady<'Msg>
     (onReady: (obj -> unit) option)
     (spec: GridSpec<'Msg>)
     (context: VisAdapter.VisualisationContext<'Msg>)
-    : ReactElement option =
+    : RenderedElement option =
     ensureModulesRegistered ()
 
     // State-slot dispatch — adapter mirrors the simple-HTML fallback's
@@ -768,8 +767,7 @@ let renderGridWithReady<'Msg>
                     @ readyProps
                 )
 
-            let gridElement =
-                ReactLegacy.createElement (unbox<ReactElement> agGridReact, gridProps)
+            let gridElement = ReactInterop.createElementWithProps (agGridReact, gridProps)
 
             // Wrap in a div carrying the ag-theme-alpine class so AG Grid's
             // stylesheet (loaded via the consumer's CSS imports) applies.
@@ -784,5 +782,5 @@ let renderGridWithReady<'Msg>
 
 /// `renderGridWithReady` with no ready hook — the shape every caller had before
 /// Phase 1594, kept so the addition is additive rather than a signature change.
-let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+let renderGrid<'Msg> (spec: GridSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : RenderedElement option =
     renderGridWithReady None spec context

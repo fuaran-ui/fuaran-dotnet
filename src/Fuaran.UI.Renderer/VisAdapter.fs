@@ -5,7 +5,7 @@ module Fuaran.UI.Renderer.VisAdapter
 //
 //  `NodeKind.DataGrid` and `NodeKind.Chart` are the two `Visualisation` kinds with
 //  third-party-library implementations whose authoring shape doesn't fit
-//  the simple Feliz render path. The renderer ships a simple-HTML-table
+//  the simple React render path. The renderer ships a simple-HTML-table
 //  fallback for Grid + a labelled-placeholder for Chart (per
 //  `Render.renderGrid` / `Render.renderChart`); consumers wanting full
 //  AG Grid / AG Charts integration supply an `IVisualisationAdapter<'Msg>`
@@ -83,7 +83,7 @@ module Fuaran.UI.Renderer.VisAdapter
 //  `xKey = ChartSpec.XField`, `yKey = field`.
 // ============================================================================
 
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
 
 /// Bundle of renderer-side dependencies an `IVisualisationAdapter` needs:
@@ -100,7 +100,7 @@ type VisualisationContext<'Msg> =
     {
         Sources: BindingResolver.BindingSources
         State: StateBehaviour<'Msg>
-        RecurseRender: Node<'Msg> -> ReactElement
+        RecurseRender: Node<'Msg> -> RenderedElement
         RunAction: Action<'Msg> -> unit
         /// The id of the node being rendered — the one field an adapter cannot
         /// recover from the spec, because a `GridSpec` / `ChartSpec` does not
@@ -155,7 +155,7 @@ type VisualisationContext<'Msg> =
     }
 
 /// Adapter contract for the two Visualisation kinds whose author surface
-/// doesn't fit the simple Feliz fallback (Grid, Chart). The renderer
+/// doesn't fit the simple React fallback (Grid, Chart). The renderer
 /// consults the adapter first; if either method returns `None`, the
 /// renderer's built-in fallback runs.
 ///
@@ -176,11 +176,11 @@ type VisualisationContext<'Msg> =
 type IVisualisationAdapter<'Msg> =
     /// Render a Fuaran Grid via the consumer's grid library. Return `None`
     /// to fall back to the renderer's simple-HTML-table.
-    abstract RenderGrid: spec: GridSpec<'Msg> * context: VisualisationContext<'Msg> -> ReactElement option
+    abstract RenderGrid: spec: GridSpec<'Msg> * context: VisualisationContext<'Msg> -> RenderedElement option
 
     /// Render a Fuaran Chart via the consumer's chart library. Return `None`
     /// to fall back to the renderer's labelled placeholder.
-    abstract RenderChart: spec: ChartSpec<'Msg> * context: VisualisationContext<'Msg> -> ReactElement option
+    abstract RenderChart: spec: ChartSpec<'Msg> * context: VisualisationContext<'Msg> -> RenderedElement option
 
 /// No-op adapter — both methods return `None`, deferring to the renderer's
 /// built-in fallbacks. Used by default when the caller does not supply a

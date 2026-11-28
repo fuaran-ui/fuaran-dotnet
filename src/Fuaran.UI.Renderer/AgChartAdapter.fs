@@ -32,8 +32,7 @@ module Fuaran.UI.Renderer.AgChartAdapter
 
 open Fable.Core
 open Fable.Core.JsInterop
-open Fable.React
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
 
 // ─── npm imports ─────────────────────────────────────────────────────
@@ -246,7 +245,7 @@ let renderChartWithReady<'Msg>
     (onReady: (obj -> unit) option)
     (spec: ChartSpec<'Msg>)
     (context: VisAdapter.VisualisationContext<'Msg>)
-    : ReactElement option =
+    : RenderedElement option =
     ensureChartsModulesRegistered ()
 
     // State-slot dispatch mirrors AgGridAdapter — short-circuit to
@@ -334,8 +333,7 @@ let renderChartWithReady<'Msg>
 
             let chartProps = createObj ([ "options" ==> options ] @ readyProps)
 
-            let chartElement =
-                ReactLegacy.createElement (unbox<ReactElement> agCharts, chartProps)
+            let chartElement = ReactInterop.createElementWithProps (agCharts, chartProps)
 
             // Wrap to give AG Charts a sized container — the chart auto-sizes
             // to its parent, so the wrapper has to declare a usable size.
@@ -349,5 +347,8 @@ let renderChartWithReady<'Msg>
 /// `renderChartWithReady` with no ready hook — the shape every caller had
 /// before Phase 1594, kept so the addition is additive rather than a signature
 /// change.
-let renderChart<'Msg> (spec: ChartSpec<'Msg>) (context: VisAdapter.VisualisationContext<'Msg>) : ReactElement option =
+let renderChart<'Msg>
+    (spec: ChartSpec<'Msg>)
+    (context: VisAdapter.VisualisationContext<'Msg>)
+    : RenderedElement option =
     renderChartWithReady None spec context

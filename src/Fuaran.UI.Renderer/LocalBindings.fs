@@ -25,14 +25,12 @@ module Fuaran.UI.Renderer.LocalBindings
 //  Function-component plumbing. The composition-based renderer uses
 //  no hooks. Local-bound inputs need hooks (useState
 //  for the buffer, useEffect for the re-sync), so they're wrapped as
-//  React function components and invoked via `React.createElement`. The
-//  `[<Import("createElement", "react")>]` declaration below is the
-//  hand-rolled bridge; we don't depend on Feliz.CompilerPlugins'
-//  `[<ReactComponent>]` attribute (not pinned in this repo's
-//  `Directory.Packages.props`).
+//  React function components and invoked via `React.createElement`, through
+//  the renderer binding's `ReactInterop.createComponent`; the renderer takes
+//  no compiler plugin to generate components.
 //
 //  Cross-pipeline. The `React.useState` / `React.useEffect` overloads are
-//  Feliz `jsNative` declarations that compile on both .NET and Fable; on
+//  the renderer binding's `jsNative` declarations that compile on both .NET and Fable; on
 //  .NET they throw at runtime if invoked. The renderer's .NET tests don't
 //  mount React, so the .NET-side path is never reached.
 // ============================================================================
@@ -41,18 +39,8 @@ module Fuaran.UI.Renderer.LocalBindings
 
 open Fable.Core
 open Fable.Core.JsInterop
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
-
-// ─── React.createElement bridge ─────────────────────────────────────────────
-//
-// `Feliz.ReactInternal` ships the same helpers but is namespaced under the
-// Feliz internal module; importing directly keeps this file's dependency
-// surface explicit. Both helpers take a function as the React component
-// `type` argument; the props object's fields become the component's props.
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
 
 // ─── Form-scope test for the submit broadcast ──────────────────────────
 //
@@ -108,13 +96,13 @@ let invalidFieldAttributes (fieldId: string) (parseError: string option) : (stri
           "data-fuaran-field-error", message
           "aria-describedby", errorSlotId fieldId ]
 
-/// The same pairs as Feliz props.
+/// The same pairs as React props.
 let private invalidInputProps (fieldId: string) (parseError: string option) : IReactProperty list =
     invalidFieldAttributes fieldId parseError
     |> List.map (fun (name, value) -> prop.custom (name, value))
 
 /// The message element itself, beside the input.
-let private errorSlot (fieldId: string) (message: string) : ReactElement =
+let private errorSlot (fieldId: string) (message: string) : RenderedElement =
     Html.div
         [ prop.id (errorSlotId fieldId)
           prop.className "fuaran-form-help"
@@ -141,7 +129,7 @@ type LocalTextProps =
        parser: string -> Result<string, string>
        commit: string -> unit |}
 
-let private renderLocalText (props: LocalTextProps) : ReactElement =
+let private renderLocalText (props: LocalTextProps) : RenderedElement =
     let buffer, setBuffer = React.useState (props.formatter props.externalValue)
     let parseError, setParseError = React.useState (None: string option)
 
@@ -246,7 +234,7 @@ let private renderLocalText (props: LocalTextProps) : ReactElement =
     let inputElement =
         Html.input (
             [ prop.className props.className
-              prop.type'.text
+              prop.type' "text"
               prop.id props.fieldId
               prop.required props.required
               prop.value buffer
@@ -279,7 +267,7 @@ type LocalNumberProps =
        commit: float -> unit
        constraints: NumberFieldConstraints |}
 
-let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
+let private renderLocalNumber (props: LocalNumberProps) : RenderedElement =
     let buffer, setBuffer = React.useState (props.formatter props.externalValue)
     let parseError, setParseError = React.useState (None: string option)
 
@@ -380,8 +368,8 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
     let inputElement =
         Html.input (
             [ prop.className props.className
-              prop.type'.text
-              prop.inputMode.numeric
+              prop.type' "text"
+              prop.inputMode "numeric"
               prop.id props.fieldId
               prop.required props.required
               prop.value buffer
@@ -403,11 +391,11 @@ let private renderLocalNumber (props: LocalNumberProps) : ReactElement =
 
 // ─── Public surface — Render.fs invokes these ──────────────────────────────
 
-let localTextInput (props: LocalTextProps) : ReactElement =
-    reactCreateElement (box renderLocalText) (box props)
+let localTextInput (props: LocalTextProps) : RenderedElement =
+    ReactInterop.createComponent (box renderLocalText) (box props)
 
-let localNumberInput (props: LocalNumberProps) : ReactElement =
-    reactCreateElement (box renderLocalNumber) (box props)
+let localNumberInput (props: LocalNumberProps) : RenderedElement =
+    ReactInterop.createComponent (box renderLocalNumber) (box props)
 
 // ─── Form-submit broadcast ──────────────────────────────────────────────────
 //

@@ -17,7 +17,7 @@ module Fuaran.UI.Renderer.AgAdapter
 //  return `None`, which `noOp` always does.
 // ============================================================================
 
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
 
 /// Host-side construction options for the combined AG adapter — the Phase 1594

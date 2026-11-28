@@ -44,7 +44,7 @@ module Fuaran.UI.Renderer.UploadStream
 //  names the class and the destination. Neither carries a byte or a file name.
 //
 //  ── Cross-pipeline ────────────────────────────────────────────────────────
-//  `React.useState` is a Feliz `jsNative` declaration that compiles on both
+//  `React.useState` is the renderer binding's `jsNative` declaration that compiles on both
 //  .NET and Fable and throws on .NET if invoked; the renderer's .NET tests
 //  never mount React. The SSR floor is the plain control with no status line
 //  and no transfer — a stream needs script — and `docs/SSR.md` says so.
@@ -53,7 +53,7 @@ module Fuaran.UI.Renderer.UploadStream
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.Core
 open Fuaran.UI.HostPrelude
 open Fuaran.UI.Ops.UploadSink
@@ -203,9 +203,9 @@ type UploadStreamProps =
        gate: unit -> bool
        warn: string -> unit
        setState: string -> JVal -> unit
-       children: ReactElement list |}
+       children: RenderedElement list |}
 
-let private renderStreamShell (props: UploadStreamProps) : ReactElement =
+let private renderStreamShell (props: UploadStreamProps) : RenderedElement =
     let status, setStatus = React.useState Status.Idle
 
     /// Refuse, once, in both directions: the operator's channel gets the class
@@ -300,10 +300,7 @@ let private renderStreamShell (props: UploadStreamProps) : ReactElement =
           prop.onChange (fun (ev: Browser.Types.Event) -> beginUpload (box ev))
           prop.children (props.children @ statusLine) ]
 
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
-
 /// The public surface — `Render.fs` invokes this when a destination is
 /// declared, and renders the control without it when none is.
-let streamShell (props: UploadStreamProps) : ReactElement =
-    reactCreateElement (box renderStreamShell) (box props)
+let streamShell (props: UploadStreamProps) : RenderedElement =
+    ReactInterop.createComponent (box renderStreamShell) (box props)

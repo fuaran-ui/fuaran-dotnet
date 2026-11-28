@@ -51,7 +51,7 @@ module Fuaran.UI.Renderer.FileUploadDrop
 //  turned away.
 //
 //  ── Cross-pipeline ────────────────────────────────────────────────────────
-//  `React.useState` is a Feliz `jsNative` declaration that compiles on both
+//  `React.useState` is the renderer binding's `jsNative` declaration that compiles on both
 //  .NET and Fable and throws on .NET if invoked; the renderer's .NET tests
 //  never mount React. The SSR floor for these flags is the plain picker — a
 //  drop needs script, so a no-script host renders exactly what it rendered
@@ -61,10 +61,7 @@ module Fuaran.UI.Renderer.FileUploadDrop
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
+open Fuaran.UI.Renderer.ReactBinding
 
 /// Write `files` into the `<input type="file">` inside `container`, then fire a
 /// bubbling `change` from it. Returns `false` when the browser refuses the
@@ -141,9 +138,9 @@ type UploadDropProps =
        acceptPaste: bool
        accept: string list
        multiple: bool
-       children: ReactElement list |}
+       children: RenderedElement list |}
 
-let private renderDropZone (props: UploadDropProps) : ReactElement =
+let private renderDropZone (props: UploadDropProps) : RenderedElement =
     // `over` is a COUNTER, not a flag. `dragenter` / `dragleave` fire for every
     // descendant the pointer crosses, so a boolean flickers off the moment the
     // drag passes over the label's own `<span>`; counting enters against leaves
@@ -251,5 +248,5 @@ let private renderDropZone (props: UploadDropProps) : ReactElement =
 
 /// The public surface — `Render.fs` invokes this when either gesture flag is
 /// set, and renders the plain label itself when neither is.
-let dropZone (props: UploadDropProps) : ReactElement =
-    reactCreateElement (box renderDropZone) (box props)
+let dropZone (props: UploadDropProps) : RenderedElement =
+    ReactInterop.createComponent (box renderDropZone) (box props)

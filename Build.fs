@@ -123,6 +123,9 @@ let private packableProjects =
       // it, so their nupkgs declare a dependency on it; it must pack alongside them.
       "Fuaran.UI.Charts"
       "Fuaran.UI.Renderer"
+      // Phase 2514 — Feliz interop for the client renderer, which itself carries no
+      // Feliz. Project-references the renderer; packs beside it.
+      "Fuaran.UI.Renderer.Feliz"
       "Fuaran.UI.Renderer.Server"
       // Phase 577 — the embedded browser renderer for .NET hosts. Ships the
       // built @fuaran-ui/renderer bundle and the canonical stylesheet as

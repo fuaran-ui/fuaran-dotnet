@@ -40,11 +40,11 @@ module Fuaran.UI.Renderer.Hydration
 //     something this module should force on every renderer consumer.
 //
 //  Parity (Phase 142) makes hydration mismatch-free: the server (ViewEngine)
-//  and client (Feliz) renderers emit the same class + ARIA markup for the same
+//  and client (React) renderers emit the same class + ARIA markup for the same
 //  tree, so React's hydration reconciler finds the DOM it expects.
 // ============================================================================
 
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
 
 #if FABLE_COMPILER
@@ -56,22 +56,22 @@ open Fable.Core.JsInterop
 type HydrationRoot = obj
 
 [<Import("hydrateRoot", "react-dom/client")>]
-let private hydrateRootNative (container: Browser.Types.Element) (element: ReactElement) : HydrationRoot = jsNative
+let private hydrateRootNative (container: Browser.Types.Element) (element: RenderedElement) : HydrationRoot = jsNative
 
 /// Hydrate the server-rendered DOM inside `container` with `element`, using
 /// React `hydrateRoot` (NOT `createRoot`). Returns the root handle; call
 /// `render root element` for subsequent updates. The server + client markup
 /// must agree (Phase 142 parity) or React logs a hydration-mismatch warning.
-let hydrate (container: Browser.Types.Element) (element: ReactElement) : HydrationRoot =
+let hydrate (container: Browser.Types.Element) (element: RenderedElement) : HydrationRoot =
     hydrateRootNative container element
 
 /// Re-render an already-hydrated root with a new element (the Elmish update
 /// path — React reuses the hydrated root, so this is a normal client update).
-let render (root: HydrationRoot) (element: ReactElement) : unit = root?render element |> ignore
+let render (root: HydrationRoot) (element: RenderedElement) : unit = root?render element |> ignore
 
 /// Convenience: hydrate the element into the container with the given id.
 /// `None` when no such element exists.
-let hydrateById (containerId: string) (element: ReactElement) : HydrationRoot option =
+let hydrateById (containerId: string) (element: RenderedElement) : HydrationRoot option =
     let el = Browser.Dom.document.getElementById containerId
 
     if isNull (box el) then
@@ -81,13 +81,13 @@ let hydrateById (containerId: string) (element: ReactElement) : HydrationRoot op
 
 /// Hydrate every island boundary (`[data-fuaran-island]`) the server emitted
 /// (Phase 163), each as an **independent** React root. `renderIsland islandId`
-/// returns the `ReactElement` for that island — the host reconstructs the
+/// returns the `RenderedElement` for that island — the host reconstructs the
 /// island's `Node<'Msg>` (model-b, same authoring code) and renders it with its
 /// own dispatch; `None` leaves the island as inert server HTML. An island whose
 /// mount throws **degrades to its static HTML** without breaking the others
 /// (error isolation, mirroring `ErrorBoundary`). Nodes outside an island are
 /// never touched. Returns the mounted roots.
-let hydrateIslands (renderIsland: string -> ReactElement option) : HydrationRoot list =
+let hydrateIslands (renderIsland: string -> RenderedElement option) : HydrationRoot list =
     let boundaries = Browser.Dom.document.querySelectorAll "[data-fuaran-island]"
 
     let roots = ResizeArray<HydrationRoot>()
@@ -121,7 +121,7 @@ let hydrateIslands (renderIsland: string -> ReactElement option) : HydrationRoot
 /// before rendering so the client output matches the boundary wrapper's
 /// children exactly (mismatch-free).
 let hydrateIslandsWith
-    (toElement: Node<'Msg> -> ReactElement)
+    (toElement: Node<'Msg> -> RenderedElement)
     (lookup: string -> Node<'Msg> option)
     : HydrationRoot list =
     hydrateIslands (fun islandId -> lookup islandId |> Option.map (Fuaran.UI.Node.stripIsland >> toElement))
@@ -133,20 +133,20 @@ let hydrateIslandsWith
 /// these entry points exist for API shape only and throw if reached off-browser.
 type HydrationRoot = obj
 
-let hydrate (_container: Browser.Types.Element) (_element: ReactElement) : HydrationRoot =
+let hydrate (_container: Browser.Types.Element) (_element: RenderedElement) : HydrationRoot =
     failwith "Hydration.hydrate is browser-only (Fable + react-dom/client hydrateRoot)"
 
-let render (_root: HydrationRoot) (_element: ReactElement) : unit =
+let render (_root: HydrationRoot) (_element: RenderedElement) : unit =
     failwith "Hydration.render is browser-only"
 
-let hydrateById (_containerId: string) (_element: ReactElement) : HydrationRoot option =
+let hydrateById (_containerId: string) (_element: RenderedElement) : HydrationRoot option =
     failwith "Hydration.hydrateById is browser-only"
 
-let hydrateIslands (_renderIsland: string -> ReactElement option) : HydrationRoot list =
+let hydrateIslands (_renderIsland: string -> RenderedElement option) : HydrationRoot list =
     failwith "Hydration.hydrateIslands is browser-only (Fable + react-dom/client hydrateRoot)"
 
 let hydrateIslandsWith
-    (_toElement: Node<'Msg> -> ReactElement)
+    (_toElement: Node<'Msg> -> RenderedElement)
     (_lookup: string -> Node<'Msg> option)
     : HydrationRoot list =
     failwith "Hydration.hydrateIslandsWith is browser-only"

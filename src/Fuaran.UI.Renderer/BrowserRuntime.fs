@@ -35,7 +35,7 @@ open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.LayoutObserver
 open Fuaran.UI.Renderer.Runtime
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 
 #if FABLE_COMPILER
 open Fable.Core
@@ -163,8 +163,12 @@ type BrowserRuntime(layoutObserver: ILayoutObserver option, allowAll: bool, call
     /// source hash; the renderer's pre-dispatch verification compares
     /// it against any hash the tree declares.
     member _.RegisterCustomRenderer
-        (moduleId: string, componentId: string, renderFn: Map<string, JVal> -> ReactElement, ?contentHash: ContentHash)
-        : unit =
+        (
+            moduleId: string,
+            componentId: string,
+            renderFn: Map<string, JVal> -> RenderedElement,
+            ?contentHash: ContentHash
+        ) : unit =
         match contentHash with
         | Some h -> customRegistry.Register(moduleId, componentId, renderFn, h)
         | None -> customRegistry.Register(moduleId, componentId, renderFn)

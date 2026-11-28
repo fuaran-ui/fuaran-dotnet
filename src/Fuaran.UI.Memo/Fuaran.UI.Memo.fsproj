@@ -23,7 +23,7 @@
        is the property's value so that an exemption without one cannot be written.
        tests/fable-laws/fable-check.ps1 prints every exemption on every run. -->
   <PropertyGroup>
-    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project: it references Fuaran.UI.Renderer, which sets Nullable=disable for ITSELF precisely because Feliz 3.3.3 and Fable.React are pre-F#-10-nullness libraries. Entering here compiles Renderer and Feliz under THIS project's nullness-ON settings and they fail. The wider question Phase 1606 surfaced - that a nullable-enabled consumer of the Renderer meets the same wall, so the Renderer's own entry proves less than it looks - is larger than this gate.</FablePortabilityExemption>
+    <FablePortabilityExemption>Ships fable/ sources but does not compile as a Fable ENTRY project: it references Fuaran.UI.Renderer, which sets Nullable=disable for ITSELF because its browser arms are written against pre-F#-10-nullness bindings (Fable.Core's dynamic operators and Fable.Browser.Dom; Feliz left its closure in Phase 2514 and was not the only cause). Entering here compiles the Renderer under THIS project's nullness-ON settings and it fails. The wider question Phase 1606 surfaced - that a nullable-enabled consumer of the Renderer meets the same wall, so the Renderer's own entry proves less than it looks - is larger than this gate.</FablePortabilityExemption>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="FragmentKey.fs" />

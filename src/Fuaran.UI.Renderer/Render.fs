@@ -19,10 +19,11 @@ module Fuaran.UI.Renderer.Render
 // ============================================================================
 //  Fuaran — renderer (§4c lines 504–542, §4f introspection contract)
 //
-//  Per-`NodeKind` dispatch to Feliz `ReactElement`.  Code compiles in both
-//  the .NET pipeline (`dotnet build`) and the Fable pipeline (`dotnet fable`)
-//  — Feliz' nuget surface looks identical from both sides; Fable rewrites
-//  the calls to `React.createElement` on transpile.
+//  Per-`NodeKind` dispatch to a `RenderedElement` (a React element, built
+//  through the renderer's own binding, `ReactBinding.fs`). Code compiles in
+//  both the .NET pipeline (`dotnet build`) and the Fable pipeline (`dotnet
+//  fable`) — the binding looks identical from both sides; Fable rewrites the
+//  calls to `React.createElement` on transpile.
 //
 //  Session 3a covered the seven seed components +
 //  Heading/Badge/Spacer/Skeleton + Stack/Card layouts + Button input + a
@@ -44,7 +45,7 @@ module Fuaran.UI.Renderer.Render
 // ============================================================================
 
 open System.Collections.Generic
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Telemetry.Abstractions
@@ -83,7 +84,7 @@ let private correlationId (seed: string) : string = Ids.deterministicCorrelation
 // boundary IS the catch); kept here for completeness.
 
 // Public surface so the .NET-side test runner can pin the discriminator
-// projection without driving Feliz's React-substrate. The renderer's
+// projection without driving the React substrate. The renderer's
 // internal call sites still consume it through the module namespace.
 let nodeKindName<'Msg> (kind: NodeKind<'Msg>) : string =
     // Phase 2041 — the projection moved to `RenderParity` so the server
@@ -120,7 +121,7 @@ let userIdKey = "userId"
 /// `IFuaranTelemetrySink` contract); a throwing sink does not poison
 /// the render path. Pure helper so the call-sites stay readable.
 /// Public so the .NET-side test runner can assert against the sink
-/// without driving Feliz's React-substrate.
+/// without driving the React substrate.
 ///
 /// `sessionContext` is read for `promptIdKey` / `userIdKey` only; an empty map
 /// reproduces the pre-330 behaviour exactly (both fields `None`). The returned
@@ -265,13 +266,13 @@ module SubtreeMemo =
     type Entry =
         { Context: obj
           Generation: int
-          Element: ReactElement }
+          Element: RenderedElement }
 
     /// The memo's decision, as a value: the element an entry holds is served
     /// only under the context it was built for (by identity) and the store
     /// generation it was built at. Pure, so the .NET suite pins it; the element
     /// side is exercised in a browser.
-    let hit (entry: Entry option) (context: obj) (generation: int) : ReactElement option =
+    let hit (entry: Entry option) (context: obj) (generation: int) : RenderedElement option =
         match entry with
         | Some e when obj.ReferenceEquals(e.Context, context) && e.Generation = generation -> Some e.Element
         | _ -> None
@@ -431,15 +432,15 @@ module ChartLoweringMemo =
 // The `(key, value)` HTML-attribute projection of a `Node`'s `Accessibility`
 // trait moved to the emission-agnostic `Fuaran.UI.Renderer.Accessibility`
 // module in `Fuaran.UI.Renderer.Core` (Phase 138) so the server renderer can
-// emit the same pairs without Feliz/Fable. The client renderer reaches it
-// through `ElementPlan` and maps the pairs to Feliz `prop.custom` props; call
+// emit the same pairs without React/Fable. The client renderer reaches it
+// through `ElementPlan` and maps the pairs to `prop.custom` props; call
 // `Fuaran.UI.Renderer.Accessibility.accessibilityAttributes` directly (the
 // `Render.accessibilityAttributes` re-export was removed in Phase 2836).
 
 // ─── The plan emitter (Phase 2108) ──────────────────────────────────────────
 
 /// This renderer's emitter for `ElementPlan` — the one place the client turns a
-/// planned element into a Feliz element. `class` becomes React's `className`;
+/// planned element into a React element. `class` becomes React's `className`;
 /// every other attribute lands under its document name; inline style
 /// declarations arrive in canonical CSS spelling and are camel-cased for
 /// React's style object; a reconciliation key is React's and is emitted;
@@ -530,14 +531,14 @@ module private Emit =
             innerHtmlProps[markup] <- p
             p
 #else
-        // On .NET the element never reaches React, and Feliz's property is a
+        // On .NET the element never reaches React, and a property is a
         // tuple a typed table cannot hold; the identity the cache exists for is
         // a browser concern.
         prop.dangerouslySetInnerHTML (TrustedTypes.html markup)
 #endif
 
     /// Emit a plan, binding its attachment points through `attach` (Phase 2278).
-    let rec planWith (attach: Attach) (p: ElementPlan.Plan<ReactElement>) : ReactElement =
+    let rec planWith (attach: Attach) (p: ElementPlan.Plan<RenderedElement>) : RenderedElement =
         match p with
         | ElementPlan.Plan.Host element -> element
         | ElementPlan.Plan.Nothing -> Html.none
@@ -554,10 +555,10 @@ module private Emit =
                   | ElementPlan.Content.Children children -> prop.children (children |> List.map (planWith attach))
                   | ElementPlan.Content.InnerHtml markup -> innerHtml markup ]
 
-            HtmlHelper.createElement spec.Tag props
+            ReactInterop.createElement spec.Tag props
 
     /// Emit a plan that declares no attachment point.
-    let plan (p: ElementPlan.Plan<ReactElement>) : ReactElement = planWith unbound p
+    let plan (p: ElementPlan.Plan<RenderedElement>) : RenderedElement = planWith unbound p
 
 // ─── Reconciliation keys for repeated children ─────────────────────────────
 //
@@ -1480,7 +1481,7 @@ let pairFieldChange
 /// carry the OTHER slot through from `current` unchanged. That construction is
 /// the risk this seam exists to expose: it was previously written out inline at
 /// every call site, where a swapped slot or a mis-boxed payload is invisible to
-/// every behavioural test the renderer has (Feliz's .NET `ReactElement` is
+/// every behavioural test the renderer has (the .NET `RenderedElement` is
 /// opaque, so a rendered control's handler cannot be extracted and fired).
 /// Building the closures here means the harness drives exactly the closure the
 /// control carries.
@@ -1586,7 +1587,8 @@ let private formatHashMismatchPayload
 /// popped by the `ErrorBoundary` arm around its child's render, which is
 /// synchronous, so the stack is empty between renders. Each entry takes the
 /// failure message and the correlation id the failure was reported under.
-let mutable private boundaryFallbacks: (string -> string -> ReactElement) list = []
+let mutable private boundaryFallbacks: (string -> string -> RenderedElement) list =
+    []
 
 #if FABLE_COMPILER
 /// Fable-side post-paint DOM walk. setTimeout(0) defers past React's
@@ -2093,7 +2095,7 @@ module private RenderDepth =
 /// standard F# device for breaking a recursive definition across a type boundary,
 /// written exactly once during module initialisation and read-only thereafter
 /// (single-threaded init order guarantees it is `Some` before any render runs).
-let mutable private renderGuestHook: (RenderContext<obj> -> Node<obj> -> ReactElement) option =
+let mutable private renderGuestHook: (RenderContext<obj> -> Node<obj> -> RenderedElement) option =
     None
 
 // ─── Reader boundaries (Phase 2530) ─────────────────────────────────────────
@@ -2184,9 +2186,6 @@ module ReaderBoundaries =
     let renderCount () : int = boundaryRenders
 
 #if FABLE_COMPILER
-[<Fable.Core.Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = Fable.Core.Util.jsNative
-
 [<Fable.Core.Import("memo", "react")>]
 let private reactMemo (componentFn: obj) (areEqual: obj) : obj = Fable.Core.Util.jsNative
 
@@ -2257,7 +2256,7 @@ let private boundaryUnchanged (previous: BoundaryProps) (next: BoundaryProps) : 
 
 /// One reader boundary: subscribed to its node's keys on the four channels, it
 /// renders its node in place against the live sources.
-let private readerBoundary (props: BoundaryProps) : ReactElement =
+let private readerBoundary (props: BoundaryProps) : RenderedElement =
     let keys = props.keys
     StateStore.useStateKeys keys.State |> ignore
     FilterStore.useFilterKeys keys.Filter |> ignore
@@ -2311,7 +2310,7 @@ let private memoReaderBoundary: obj =
 /// The boundary `render` places for `node` instead of rendering it, when the
 /// render is under a reactive surface that names `node` a reader. `None`
 /// everywhere else, and always on .NET.
-let private placeBoundary (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement option =
+let private placeBoundary (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : RenderedElement option =
 #if FABLE_COMPILER
     match activeFrame with
     | None -> None
@@ -2332,7 +2331,7 @@ let private placeBoundary (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
                        frame = frame
                        depth = RenderDepth.current () |}
 
-                Some(reactCreateElement memoReaderBoundary (box props))
+                Some(ReactInterop.createComponent memoReaderBoundary (box props))
 #else
     ignore ctx
     ignore node
@@ -2611,9 +2610,6 @@ let private measureGridViewport (el: obj) : float array = Fable.Core.Util.jsNati
 })($0, $1)""")>]
 let private observeViewportResize (el: obj) (onResize: unit -> unit) : unit -> unit = Fable.Core.Util.jsNative
 
-[<Fable.Core.Import("createElement", "react")>]
-let private createViewportElement (componentFn: obj) (props: obj) : ReactElement = Fable.Core.Util.jsNative
-
 type private GridWindowViewportProps =
     {| offset: int
        presentedCount: int
@@ -2622,9 +2618,9 @@ type private GridWindowViewportProps =
        windowKey: string
        current: GridModel.RowWindow option
        write: string -> JVal -> unit
-       renderTable: ReactElement list -> ReactElement list -> ReactElement |}
+       renderTable: RenderedElement list -> RenderedElement list -> RenderedElement |}
 
-let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactElement =
+let private renderGridWindowViewport (props: GridWindowViewportProps) : RenderedElement =
     let viewportRef = React.useElementRef ()
 
     let rowHeight, setRowHeight = React.useState GridModel.defaultWindowRowHeightPx
@@ -2671,7 +2667,7 @@ let private renderGridWindowViewport (props: GridWindowViewportProps) : ReactEle
         [||]
     )
 
-    let spacer (rows: int) : ReactElement list =
+    let spacer (rows: int) : RenderedElement list =
         if rows > 0 then
             [ Html.tr
                   [ prop.custom ("aria-hidden", "true")
@@ -2722,7 +2718,7 @@ let rec private renderKind
     // below except `Link` / `Button` / `Image`. See
     // `Accessibility.forwardsToSemanticElement` + `docs/DECISIONS.md` D4.
     (semanticAttrs: (string * string) list)
-    : ReactElement =
+    : RenderedElement =
     match kind with
     // Phase 2278 — the layout kinds are `ElementPlan.LayoutPlan` values; the
     // handler-bearing ones bind their named attachment points here.
@@ -3150,7 +3146,7 @@ let rec private renderKind
         // which holds `renderFallback` while the child renders.
         let boundaryCtx = { ctx with InErrorBoundary = true }
 
-        let renderFallback (primaryMessage: string) (corrId: string) : ReactElement =
+        let renderFallback (primaryMessage: string) (corrId: string) : RenderedElement =
             let fallbackCtx = { ctx with InErrorBoundary = false }
 
             try
@@ -3333,7 +3329,7 @@ let rec private renderKind
         // the scoped members gets the unregistered placeholder — fail closed;
         // "unimplemented" is a kind of unregistered.
 
-        let renderPlaceholder () : ReactElement =
+        let renderPlaceholder () : RenderedElement =
             let propKeys = props |> Map.toList |> List.map fst |> String.concat ", "
 
             Html.div
@@ -3390,13 +3386,13 @@ let rec private renderKind
                                 ) }
               Warn = ctx.Runtime.Warn }
 
-        let routed (element: ReactElement) : ReactElement =
+        let routed (element: RenderedElement) : RenderedElement =
             if Runtime.DomMountHost.isHost element then
                 Runtime.DomMountHost.withRoute domMountRoute element
             else
                 element
 
-        let dispatchToRenderer () : ReactElement =
+        let dispatchToRenderer () : RenderedElement =
             match registryProbe with
             | Some(fn, _) -> routed (fn props)
             | None ->
@@ -3407,7 +3403,7 @@ let rec private renderKind
         /// Refuse the node: warn, then route through `OnError` when the consumer
         /// supplied one, else the labelled placeholder so the failure stays
         /// visible rather than becoming a blank box.
-        let refuse (reason: string) : ReactElement =
+        let refuse (reason: string) : RenderedElement =
             ctx.Runtime.Warn(formatHashMismatchPayload moduleId componentId contentHash registryHash)
 
             match state.OnError with
@@ -3665,7 +3661,7 @@ let rec private renderKind
 
 /// What a container kind's plan needs from this renderer (Phase 2278): a
 /// child renders through `render`, which carries the walk.
-and private planContext (ctx: RenderContext<'Msg>) (nodeId: string) : ElementPlan.PlanContext<'Msg, ReactElement> =
+and private planContext (ctx: RenderContext<'Msg>) (nodeId: string) : ElementPlan.PlanContext<'Msg, RenderedElement> =
     { Sources = ctx.Sources
       Csp = ctx.Policy.Csp
       Collector = None
@@ -3678,7 +3674,7 @@ and private renderButton
     (spec: ButtonSpec<'Msg>)
     // Phase 951 — the node's a11y projection, emitted on the `<button>` itself.
     (semanticAttrs: (string * string) list)
-    : ReactElement =
+    : RenderedElement =
     // Phase 2290 — the markup is `ElementPlan.InputPlan.button`, shared with
     // the server. The UNWIRED cue (ruling R1) is this renderer's runtime
     // decoration, applied here and never served: a button whose action reaches
@@ -3722,7 +3718,7 @@ and private renderButton
             | _ -> [])
         decorated
 
-and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : ReactElement =
+and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : RenderedElement =
     // Phase 2290 — the markup is `ElementPlan.InputPlan.select`, shared with
     // the server (rulings R2 / R3); this binds the change.
     let onChange: IReactProperty list =
@@ -3764,7 +3760,7 @@ and private renderSelect (ctx: RenderContext<'Msg>) (spec: SelectSpec<'Msg>) : R
             | _ -> [])
         (ElementPlan.InputPlan.select ctx.Sources spec)
 
-and private renderForm (ctx: RenderContext<'Msg>) (nodeId: string) (spec: FormSpec<'Msg>) : ReactElement =
+and private renderForm (ctx: RenderContext<'Msg>) (nodeId: string) (spec: FormSpec<'Msg>) : RenderedElement =
     // Phase 2290 — the markup (fields, submit, the Phase 130 disabled fieldset)
     // is `ElementPlan.InputPlan.form`, shared with the server; this binds the
     // submit handler.
@@ -4001,7 +3997,7 @@ and private fieldAttach (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : Em
 /// with the server. The WIDGET controls are this renderer's by nature: a
 /// stateful component in place of the plan's no-script floor — the
 /// `Binding.Local` buffers, the combobox, the rating and the token field.
-and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : ReactElement =
+and private renderFormField (ctx: RenderContext<'Msg>) (field: FormField<'Msg>) : RenderedElement =
     let labelText = BindingResolver.resolveTextSource ctx.Sources field.Label
     let (NodeId fieldNodeId) = NodeId field.Id
 
@@ -4216,7 +4212,7 @@ and private filterAttach (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : E
 /// `ElementPlan.InputPlan` (rulings R7 / R8 / R9), shared with the server;
 /// the combobox, rating and token chips are this renderer's components by
 /// nature, writing through `$filters.<name>` like every declarative chip.
-and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : ReactElement =
+and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>) : RenderedElement =
     let labelText = BindingResolver.resolveTextSource ctx.Sources spec.Label
     let dest: Binding<obj> = Binding.Filter(spec.Name, None)
 
@@ -4270,7 +4266,7 @@ and private renderFilterSpec (ctx: RenderContext<'Msg>) (spec: FilterSpec<'Msg>)
 
     Emit.plan (ElementPlan.InputPlan.filter ctx.Sources spec (ElementPlan.Plan.Host control))
 
-and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : ReactElement =
+and private renderFilters (ctx: RenderContext<'Msg>) (specs: FilterSpec<'Msg> list) : RenderedElement =
     Emit.plan (ElementPlan.InputPlan.filters [ for spec in specs -> ElementPlan.Plan.Host(renderFilterSpec ctx spec) ])
 
 and private renderFileUpload
@@ -4282,7 +4278,7 @@ and private renderFileUpload
     // every upload in the tree.
     (nodeId: string)
     (spec: FileUploadSpec<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     // Phase 2290 — the label, the input and its attributes are
     // `ElementPlan.InputPlan` (ruling R13), shared with the server; this binds
     // the selection.
@@ -4337,7 +4333,7 @@ and private renderFileUpload
     let attach: Emit.Attach =
         fun point _ ->
             match point with
-            // Feliz's `File list` overload pulls the files off `e.target.files`.
+            // The `File list` overload pulls the files off `e.target.files`.
             | ElementPlan.Attach.FileSelect -> [ prop.onChange onSelect ]
             | _ -> []
 
@@ -4383,7 +4379,7 @@ and private renderGrid
     (parentNodeId: string)
     (state: StateBehaviour<'Msg>)
     (spec: GridSpec<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     // Adapter first — when the consumer wires an AG-Grid-shaped
     // IVisualisationAdapter, defer to it and let it handle row-data
     // resolution / state-slot dispatch / event mapping. Falling through
@@ -4898,7 +4894,7 @@ and private renderGrid
                             (absolute + 1)
                             total
 
-                let reorderCellFor (rowIndex: int) : ReactElement list =
+                let reorderCellFor (rowIndex: int) : RenderedElement list =
                     if not handleShown then
                         []
                     else
@@ -4961,7 +4957,7 @@ and private renderGrid
                                                     | _ -> ())
                                             prop.text "\u28ff" ] ] ] ]
 
-                let reorderHeaderCells: ReactElement list =
+                let reorderHeaderCells: RenderedElement list =
                     if not handleShown then
                         []
                     else
@@ -5029,7 +5025,7 @@ and private renderGrid
                 // Activated with nothing lifted it REFUSES OUT LOUD rather than
                 // doing nothing: the precondition is the reader's to meet, and
                 // silence would make a real control read as broken.
-                let placeControl () : ReactElement =
+                let placeControl () : RenderedElement =
                     match spec.TransferInKey with
                     | None -> Html.none
                     | Some _ ->
@@ -5062,7 +5058,7 @@ and private renderGrid
                 // Rendered EMPTY by both pipelines, so the server's markup and
                 // the client's first render agree and hydration finds what it
                 // expects; only a reader's own gesture ever puts text in it.
-                let transferStatus () : ReactElement =
+                let transferStatus () : RenderedElement =
                     Html.div
                         [ prop.id (parentNodeId + "-fuaran-drag-status")
                           prop.className "fuaran-drag-status"
@@ -5087,7 +5083,7 @@ and private renderGrid
                 let columnKey (colIndex: int) (col: ColumnErased<'Msg>) : string =
                     reconciliationKey (Some(defaultArg col.Field col.Label)) colIndex
 
-                let sortableHeader (colIndex: int) (col: ColumnErased<'Msg>) : ReactElement =
+                let sortableHeader (colIndex: int) (col: ColumnErased<'Msg>) : RenderedElement =
                     // Phase 861 — the column flag NARROWS, never widens: absent
                     // inherits (sortable iff the column has a `field`), `false`
                     // opts out. `true` cannot turn the affordance on where the
@@ -5147,7 +5143,7 @@ and private renderGrid
                 // Host-paged grids cannot know the row total, so the pager
                 // degrades to previous/next with no page count — a stated limit
                 // of this cut, not an oversight.
-                let pager () : ReactElement =
+                let pager () : RenderedElement =
                     match pagination with
                     | None -> Html.none
                     | Some(pageKey, size, page, hostPages) ->
@@ -5193,7 +5189,7 @@ and private renderGrid
                                           ) ]
                                     step "Next" (page + 1) atEnd ] ]
 
-                let gridTableWith (before: ReactElement list) (after: ReactElement list) =
+                let gridTableWith (before: RenderedElement list) (after: RenderedElement list) =
                     Html.table
                         [ prop.className (
                               "fuaran-grid"
@@ -5225,7 +5221,7 @@ and private renderGrid
                                                 // Phase 934 — the cell list is hoisted so the row can
                                                 // prepend the reorder handle without re-shaping the
                                                 // (unchanged) per-cell body below.
-                                                let bodyCells: ReactElement list =
+                                                let bodyCells: RenderedElement list =
                                                     [ for (columnIndex, col) in List.indexed spec.Columns ->
                                                           // Editable write-back applies only on the declarative
                                                           // path — a Field-projected Text/Numeric cell with no
@@ -5332,7 +5328,7 @@ and private renderGrid
                     match spec.WindowStateKey, window with
                     | Some windowKey, Some presented ->
 #if FABLE_COMPILER
-                        createViewportElement
+                        ReactInterop.createComponent
                             (box renderGridWindowViewport)
                             (box
                                 {| offset = presented.Offset
@@ -5444,7 +5440,7 @@ and private renderGridCell
     (paste: (string -> bool) option)
     (col: ColumnErased<'Msg>)
     (row: Row)
-    : ReactElement =
+    : RenderedElement =
     // Phase 425 — the closure wins when present; else the declarative `Field` projects the row
     // property; else the cell is empty. A decoded grid renders data from `Field` with zero host code.
     let value =
@@ -5491,7 +5487,7 @@ and private renderGridCell
             | CellKindErased.Numeric, CellValue.Numeric n ->
                 Html.input
                     [ prop.className "fuaran-grid-cell-editable"
-                      prop.type'.number
+                      prop.type' "number"
                       prop.value n
                       prop.onChange (fun (v: float) ->
                           // An empty / mid-edit number input parses NaN — never commit it
@@ -5504,7 +5500,7 @@ and private renderGridCell
                 // only when the entry parses numerically.
                 Html.input
                     [ prop.className "fuaran-grid-cell-editable"
-                      prop.type'.text
+                      prop.type' "text"
                       prop.value (Formatting.formatCellValue CellFormat.None value)
                       prop.onChange (fun (v: string) ->
                           match System.Double.TryParse v with
@@ -5519,7 +5515,7 @@ and private renderGridCell
 
                 Html.input
                     [ prop.className "fuaran-grid-cell-editable"
-                      prop.type'.text
+                      prop.type' "text"
                       prop.value current
                       prop.onChange (fun (v: string) -> commitCell (CellValue.Text v))
                       yield! pasteProps ]
@@ -5543,7 +5539,7 @@ and private renderGridCell
         | CellValue.Numeric n ->
             Html.input
                 [ prop.className "fuaran-grid-cell-editable"
-                  prop.type'.number
+                  prop.type' "number"
                   prop.value n
                   prop.onChange (fun (v: float) ->
                       // As on the declarative path (Phase 663): an empty / mid-edit number
@@ -5553,7 +5549,7 @@ and private renderGridCell
         | CellValue.Text s ->
             Html.input
                 [ prop.className "fuaran-grid-cell-editable"
-                  prop.type'.text
+                  prop.type' "text"
                   prop.value s
                   prop.onChange (fun (v: string) -> runEdit (CellValue.Text v)) ]
         | _ -> Html.span [ prop.text (Formatting.formatCellValueIn ctx.Sources.Locale col.Format value) ]
@@ -5561,7 +5557,7 @@ and private renderGridCell
         let current = getValue row
 
         Html.input
-            [ prop.type'.checkbox
+            [ prop.type' "checkbox"
               prop.isChecked current
               prop.onChange (fun (b: bool) ->
                   match onToggle with
@@ -5642,7 +5638,7 @@ and private renderChart
     (parentNodeId: string)
     (state: StateBehaviour<'Msg>)
     (spec: ChartSpec<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     // Adapter first — when wired (e.g. AG Charts via Fuaran's in-tree
     // adapter or a platform adapter), defer to it. Falling through gives
     // a labelled placeholder + row count so the demo at least shows
@@ -5803,7 +5799,7 @@ and private gridExportControl
     (nodeId: string)
     (scope: GridExport.Scope)
     (project: unit -> string list * string list list)
-    : ReactElement =
+    : RenderedElement =
     Emit.planWith (gridExportAttach ctx nodeId project) (ElementPlan.VisPlan.exportButton (GridExport.scopeLabel scope))
 
 and private renderMap
@@ -5811,7 +5807,7 @@ and private renderMap
     (parentNodeId: string)
     (state: StateBehaviour<'Msg>)
     (spec: MapSpec<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     // Phase 2290 — the state slots, the placeholder and the marker list are
     // `ElementPlan.VisPlan.map` (ruling R12), shared with the server; a
     // marker's click is bound here when `OnMarkerClick` is wired. Real map
@@ -5829,7 +5825,7 @@ and private renderMap
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-/// Render a Fuaran `Node<'Msg>` to a Feliz `ReactElement` against an
+/// Render a Fuaran `Node<'Msg>` to a `RenderedElement` against an
 /// explicit context (sources + runtime + dispatch).
 /// Fuaran-UI Phase 1535 — CONDITIONAL PRESENCE, and the reason `render` is now
 /// two lines in front of `renderPresent` rather than one function.
@@ -5856,14 +5852,14 @@ and private renderMap
 /// at depth 1 and every nested `render` one deeper; past
 /// `WireLimits.MaxDepth` the subtree is replaced by the shared depth marker and
 /// the omission is reported through `Warn`.
-and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+and render (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : RenderedElement =
     // Phase 2530 — under a reactive surface, a reader renders behind its own
     // boundary (see "Reader boundaries" above).
     match placeBoundary ctx node with
     | Some boundary -> boundary
     | None -> renderMemoised ctx node
 
-and private renderMemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+and private renderMemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : RenderedElement =
     // Phase 2547 — the subtree memo. Three keys, all by identity or by count:
     // the node, the context, and the store write generation. A node under an
     // action sink is never memoised: `renderPresent` stamps a per-node copy of
@@ -5886,7 +5882,7 @@ and private renderMemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : React
     else
         renderUnmemoised ctx node
 
-and private renderUnmemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+and private renderUnmemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : RenderedElement =
     let depth = RenderDepth.current () + 1
 
     if depth > Fuaran.UI.WireLimits.MaxDepth then
@@ -5908,7 +5904,7 @@ and private renderUnmemoised (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : Rea
         finally
             RenderDepth.set (depth - 1)
 
-and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactElement =
+and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : RenderedElement =
     // `Node.Id` is a bare string in the generated envelope (the `NodeId`
     // wrapper erased at the tree level).
     let id = node.Id
@@ -5950,7 +5946,7 @@ and private renderPresent (ctx: RenderContext<'Msg>) (node: Node<'Msg>) : ReactE
     // throws must propagate up to its catch. The when-clause filter is
     // load-bearing here — without it the per-node guard would absorb
     // throws before the boundary saw them.
-    let kindBody: ReactElement =
+    let kindBody: RenderedElement =
         try
             // `Node.State` is optional in the generated envelope — `None` is
             // the old all-`None` slots record, so materialise
@@ -5990,7 +5986,7 @@ renderGuestHook <- Some render
 /// specified, byte-identical to the server's (parity). The lift itself is
 /// `Fuaran.UI.Ops.JsonDecode.BehindReader.view`; this renderer never sees an
 /// `Unknown`, only what the reader decided to show.
-let renderBehind (ctx: RenderContext<'Msg>) (view: BehindView<'Msg>) : ReactElement =
+let renderBehind (ctx: RenderContext<'Msg>) (view: BehindView<'Msg>) : RenderedElement =
     match view with
     | BehindView.Rendered node -> render ctx node
     | BehindView.Placeholder(kind, required) ->
@@ -6021,7 +6017,7 @@ let renderWithSources
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render (RenderContext.create sources dispatch node) node
 
 /// `renderWithSources` with an EXPLICIT destination policy (Phase 1026) — the
@@ -6050,7 +6046,7 @@ let renderWithSourcesAndEgress
     (egressPolicy: Sanitize.EgressPolicy)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     let ctx = RenderContext.create sources dispatch node
 
     render
@@ -6069,7 +6065,7 @@ let renderWithSourcesAndSink
     (telemetrySink: IFuaranTelemetrySink)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render
         { RenderContext.create sources dispatch node with
             Runtime = runtime
@@ -6087,7 +6083,7 @@ let renderWithSourcesSinkAndContext
     (sessionContext: Map<string, string>)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render
         { RenderContext.create sources dispatch node with
             Runtime = runtime
@@ -6108,7 +6104,7 @@ let renderWithSourcesSinkContextAndActionSink
     (actionSink: IActionInvocationSink option)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render
         { RenderContext.create sources dispatch node with
             Runtime = runtime
@@ -6131,7 +6127,7 @@ let renderWithSourcesInScope
     (runtime: Runtime.IFuaranRuntime)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render
         { (RenderContext.create sources dispatch node |> RenderContext.inScope scopeId) with
             Runtime = runtime }
@@ -6149,7 +6145,7 @@ let renderWithSourcesInScopeAndSink
     (telemetrySink: IFuaranTelemetrySink)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     render
         { (RenderContext.create sources dispatch node |> RenderContext.inScope scopeId) with
             Runtime = runtime
@@ -6263,7 +6259,7 @@ let private stateReactiveComponent
            dispatch: 'Msg -> unit
            prepared: PreparedTree<'Msg>
            boundaries: obj |})
-    : ReactElement =
+    : RenderedElement =
     let frame =
         { Boundaries = props.boundaries
           Sources = liveSourcesOf props.prepared props.sources }
@@ -6303,13 +6299,13 @@ let renderStateReactive
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
 #if FABLE_COMPILER
     let prepared, boundaries = prepareReactive node
 
     // Pass the ORIGINAL sources; the frame merges the live snapshot over them
     // whenever a store has moved (see `liveSourcesOf`).
-    reactCreateElement
+    ReactInterop.createComponent
         (box stateReactiveComponent)
         (box
             {| sources = sources
@@ -6337,11 +6333,11 @@ let renderStateReactive
 // themes at runtime re-render with the new theme — React diffs the
 // `<style>` content and the variables re-bind without a full reflow.
 
-/// Project a `Theme` to a Feliz `<style>` element carrying its
+/// Project a `Theme` to a `<style>` element carrying its
 /// CSS-variable bundle. Mount alongside the rendered node tree to enable
 /// the typed-theme path. See `renderWithTheme` for the wrapping entry
 /// point.
-let themeStyleElement (theme: Theme) : ReactElement =
+let themeStyleElement (theme: Theme) : RenderedElement =
     Html.style [ prop.dangerouslySetInnerHTML (TrustedTypes.html (Theme.toCss theme)) ]
 
 /// Phase 2482 — the chart tokens `renderWithTheme` last installed, so a
@@ -6377,7 +6373,7 @@ let renderWithTheme
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     installThemeCharts theme
     React.Fragment [ themeStyleElement theme; renderWithSources sources dispatch node ]
 
@@ -6389,7 +6385,7 @@ let renderWithTheme
 /// `themeStyleElement`, unchanged. The raw-HTML sink still mints through the
 /// `fuaran-renderer` Trusted Types policy — the two postures are orthogonal and
 /// a host may send both directives.
-let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : ReactElement =
+let themeStyleElementWithCsp (csp: Csp.CspMode) (theme: Theme) : RenderedElement =
     match Csp.nonce csp with
     | Some n ->
         Html.style
@@ -6415,7 +6411,7 @@ let renderWithSourcesAndCsp
     (sources: BindingResolver.BindingSources)
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
-    : ReactElement =
+    : RenderedElement =
     let ctx = RenderContext.create sources dispatch node
 
     render

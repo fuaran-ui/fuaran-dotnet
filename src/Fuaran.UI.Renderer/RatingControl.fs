@@ -25,11 +25,8 @@ module Fuaran.UI.Renderer.RatingControl
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Renderer.RatingModel
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
 
 // ─── the component ──────────────────────────────────────────────────────────
 
@@ -46,7 +43,7 @@ type RatingProps =
        value: float
        commit: float -> unit |}
 
-let private starRow (props: RatingProps) : ReactElement list =
+let private starRow (props: RatingProps) : RenderedElement list =
     [ for index, fill in List.indexed (fills props.max props.value) ->
           Html.span
               [ prop.key index
@@ -64,7 +61,7 @@ let private starRow (props: RatingProps) : ReactElement list =
                 // individually-announced glyphs would say it five more times.
                 prop.custom ("aria-hidden", "true") ] ]
 
-let private renderRating (props: RatingProps) : ReactElement =
+let private renderRating (props: RatingProps) : RenderedElement =
     let shown = clamp props.max props.value
 
     let reading =
@@ -131,5 +128,5 @@ let private renderRating (props: RatingProps) : ReactElement =
 /// Mount the control. Invoked through `React.createElement` for
 /// `ComboboxControl`'s reason — the composition-based renderer holds no hooks,
 /// so a control that needs them is wrapped as a function component.
-let rating (props: RatingProps) : ReactElement =
-    reactCreateElement renderRating (box props)
+let rating (props: RatingProps) : RenderedElement =
+    ReactInterop.createComponent renderRating (box props)

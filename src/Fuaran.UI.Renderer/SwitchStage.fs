@@ -61,10 +61,7 @@ module Fuaran.UI.Renderer.SwitchStage
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
+open Fuaran.UI.Renderer.ReactBinding
 
 // ─── The decisions, as pure functions ───────────────────────────────────────
 
@@ -200,7 +197,7 @@ let swipeIntent (dx: float) : int option =
 // ─── The browser edges ──────────────────────────────────────────────────────
 
 /// The reader's reduced-motion preference. Emit-based because `matchMedia` has
-/// no Feliz binding here, and guarded on every side: a host with no `window`,
+/// no binding in the renderer's React binding, and guarded on every side: a host with no `window`,
 /// no `matchMedia` (older embedded webviews) or a throwing implementation
 /// answers `false`, which is the pre-1122 behaviour and therefore the honest
 /// default — "I cannot read the preference" must not silently become "the
@@ -237,9 +234,9 @@ type SwitchStageProps =
        matches: string list
        current: string option
        advanceTo: (string -> unit) option
-       children: ReactElement list |}
+       children: RenderedElement list |}
 
-let private renderStage (props: SwitchStageProps) : ReactElement =
+let private renderStage (props: SwitchStageProps) : RenderedElement =
     let stopped, setStopped = React.useState false
     let paused, setPaused = React.useState false
     let reduced, setReduced = React.useState false
@@ -358,5 +355,5 @@ let private renderStage (props: SwitchStageProps) : ReactElement =
 /// The public surface — `Render.fs` invokes this for a `Switch` and renders the
 /// selected child itself, so there is exactly one definition of the markup and
 /// this file adds only the behaviour around it.
-let stage (props: SwitchStageProps) : ReactElement =
-    reactCreateElement (box renderStage) (box props)
+let stage (props: SwitchStageProps) : RenderedElement =
+    ReactInterop.createComponent (box renderStage) (box props)

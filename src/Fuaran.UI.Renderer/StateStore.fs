@@ -82,7 +82,7 @@ open System.Collections.Generic
 #if FABLE_COMPILER
 open Fable.Core
 open Fable.Core.JsInterop
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 #endif
 
 /// The persistent half of a state store, as a PORT rather than a hard-wired
@@ -667,7 +667,7 @@ let useStateValue (key: string) (defaultValue: string) : string =
 
     React.useEffect (
         (fun () ->
-            // Cleanup thunk (Feliz useEffect convention): unsubscribe on unmount.
+            // Cleanup thunk (the React useEffect convention): unsubscribe on unmount.
             subscribe (fun () -> setValue (read ()))),
         [| box key |]
     )

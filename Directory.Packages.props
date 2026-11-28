@@ -108,6 +108,13 @@
          Fuaran.UI.Client sits on the server side of the proxy). No shipping
          Fuaran.UI.* package takes this dependency. -->
     <PackageVersion Include="Fable.Fetch" Version="2.7.0" />
+    <!-- Phase 2514: the DOM types Fuaran.UI.Renderer's browser arms name, pinned
+         at the version Feliz's chain resolved before the renderer left Feliz,
+         so the move changed no binding the renderer compiles against. -->
+    <PackageVersion Include="Fable.Browser.Dom" Version="2.4.4" />
+    <!-- Feliz: no longer in Fuaran.UI.Renderer's closure (Phase 2514). The
+         Fuaran.UI.Renderer.Feliz adapter, the samples and the Fable test hosts
+         that author in it reference it themselves. -->
     <PackageVersion Include="Feliz" Version="3.3.3" />
     <!-- Server-side rendering (Phase 140). Feliz.ViewEngine emits HTML strings
          on plain .NET (no React / Fable) with the same Feliz-shaped API as the

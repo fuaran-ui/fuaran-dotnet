@@ -4,13 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
     <PackageId>Fuaran.UI.Renderer</PackageId>
-    <Description>Fuaran renderer – Fable + React + Feliz. Every string-to-DOM seam carries a declared sanitisation posture (SANITIZATION.md states it seam by seam): an allowlisted URL-scheme floor on href/src that also rejects the protocol-relative spellings, a positive character gate on extra-attribute names, and a raw-HTML floor over rendered markdown. Interactive dispatch fails closed – a shipped runtime denies until the host grants, and the permissive posture is reached by name. Apache-2.0 licensed.</Description>
+    <Description>Fuaran renderer – Fable + React, with no authoring DSL in its closure: every entry point returns the opaque RenderedElement, and Fuaran.UI.Renderer.Feliz converts it for a Feliz host. Every string-to-DOM seam carries a declared sanitisation posture (SANITIZATION.md states it seam by seam): an allowlisted URL-scheme floor on href/src that also rejects the protocol-relative spellings, a positive character gate on extra-attribute names, and a raw-HTML floor over rendered markdown. Interactive dispatch fails closed – a shipped runtime denies until the host grants, and the permissive posture is reached by name. Apache-2.0 licensed.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- Feliz 3.3.3 + Fable.React 5.x are pre-F#-10-nullness libraries; their
-         sources contain `null` / `not null` constraint mixes that F# 10's
-         nullness checker rejects (warning/error 43).  Known F# 10 gotcha: nullable-reference cascades
-         through pre-nullable Fable libraries.  Disable nullness for this project only;
-         the upstream typed-tree library (Fuaran.UI) keeps it on. -->
+    <!-- Nullness is off for this project because the browser arms are written
+         against pre-F#-10-nullness bindings: Fable.Core's dynamic operators
+         (`?`, `!!`, `createObj`) and Fable.Browser.Dom's types, whose `null` /
+         `not null` constraint mixes F# 10's checker rejects (FS3261 / FS0043).
+         Phase 2514 removed Feliz from the closure and measured whether it had
+         been the only cause: it had not, so the setting stays, for these two.
+         The upstream typed-tree library (Fuaran.UI) keeps nullness on. -->
     <Nullable>disable</Nullable>
     <!-- Fable consumers see the renderer as a regular F# library; .NET consumers
          see the Feliz types as their normal nuget-published shape.  Setting
@@ -49,6 +51,10 @@
 <!-- The last-resort diagnostic line every deliberately-isolated failure in
          this tier reports through. Compiled first: it depends on nothing. -->
     <Compile Include="Diagnostics.fs" />
+    <!-- Phase 2514: the renderer's own React binding and the opaque
+         `RenderedElement` every entry point returns. Before everything that
+         builds an element; depends on Fable.Core and the DOM types only. -->
+    <Compile Include="ReactBinding.fs" />
     <Compile Include="FragmentApply.fs" />
     <Compile Include="Runtime.fs" />
     <!-- Phase 1743 — the runtime-reported escape-hatch predicates. After
@@ -164,7 +170,9 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
-    <PackageReference Include="Feliz" />
+    <!-- Phase 2514: the DOM types the renderer's browser arms name. They reached
+         this project through Feliz before it left the closure. -->
+    <PackageReference Include="Fable.Browser.Dom" />
     <!-- Phase 2577: the `Capability` / registry surface RenderExport declares the
          two export ids against. Already in the graph of every host that references
          Fuaran.UI.AiTools; declared here because this project now opens it. -->

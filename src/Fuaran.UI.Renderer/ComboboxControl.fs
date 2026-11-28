@@ -47,7 +47,7 @@ module Fuaran.UI.Renderer.ComboboxControl
 //  validation is not a trust boundary.
 //
 //  ── Cross-pipeline ─────────────────────────────────────────────────────────
-//  `React.useState` / `React.useRef` are Feliz `jsNative` declarations that
+//  `React.useState` / `React.useRef` are the renderer binding's `jsNative` declarations that
 //  compile on both .NET and Fable and throw on .NET if invoked. The renderer's
 //  .NET tests never mount React; the SSR floor for this control is the server
 //  renderer's `<input list>` + `<datalist>`, which needs no script at all.
@@ -56,11 +56,8 @@ module Fuaran.UI.Renderer.ComboboxControl
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
+open Fuaran.UI.Renderer.ReactBinding
 open Fuaran.UI.Types
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
 
 /// Everything the control needs, already resolved: the renderer keeps its
 /// `BindingSources` plumbing at the call site and this component holds only the
@@ -83,7 +80,7 @@ type ComboboxProps =
 /// not valid in an id.
 let private optionId (fieldId: string) (index: int) = fieldId + "-option-" + string index
 
-let private renderCombobox (props: ComboboxProps) : ReactElement =
+let private renderCombobox (props: ComboboxProps) : RenderedElement =
     let committedLabel =
         props.committed
         |> Option.bind (fun v -> props.options |> List.tryFind (fun o -> o.Value = v))
@@ -221,7 +218,7 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
     let inputElement =
         Html.input
             [ prop.className props.className
-              prop.type'.text
+              prop.type' "text"
               prop.id props.fieldId
               prop.required props.required
               prop.placeholder props.placeholder
@@ -273,5 +270,5 @@ let private renderCombobox (props: ComboboxProps) : ReactElement =
           prop.children [ inputElement; listElement ] ]
 
 /// The public surface — `Render.fs` invokes this.
-let combobox (props: ComboboxProps) : ReactElement =
-    reactCreateElement (box renderCombobox) (box props)
+let combobox (props: ComboboxProps) : RenderedElement =
+    ReactInterop.createComponent (box renderCombobox) (box props)

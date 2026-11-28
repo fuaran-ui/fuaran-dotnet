@@ -59,10 +59,7 @@
 #nowarn "3261"
 
 open Fable.Core
-open Feliz
-
-[<Import("createElement", "react")>]
-let private reactCreateElement (componentFn: obj) (props: obj) : ReactElement = jsNative
+open Fuaran.UI.Renderer.ReactBinding
 
 /// Place `surface` against the node whose `data-fuaran-node-id` is `anchorId`,
 /// and return whether it was placed. `false` means no anchor resolved and the
@@ -192,9 +189,9 @@ type PopoverProps =
        anchor: string option
        dismissable: bool
        onDismiss: unit -> unit
-       children: ReactElement list |}
+       children: RenderedElement list |}
 
-let private renderPopover (props: PopoverProps) : ReactElement =
+let private renderPopover (props: PopoverProps) : RenderedElement =
     let surfaceRef = React.useElementRef ()
 
     let anchorId = props.anchor |> Option.defaultValue ""
@@ -256,5 +253,5 @@ let private renderPopover (props: PopoverProps) : ReactElement =
 
 /// The public surface — `Render.fs` invokes this for a `Popover` modality and
 /// renders the plain overlay itself for a `Modal`.
-let surface (props: PopoverProps) : ReactElement =
-    reactCreateElement (box renderPopover) (box props)
+let surface (props: PopoverProps) : RenderedElement =
+    ReactInterop.createComponent (box renderPopover) (box props)

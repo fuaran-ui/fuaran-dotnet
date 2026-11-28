@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Fuaran.UI.Renderer.Feliz</PackageId>
+    <Description>Feliz interop for the Fuaran client renderer: converts the renderer's opaque RenderedElement to and from a Feliz ReactElement, and registers Custom renderers written in Feliz. Fuaran.UI.Renderer itself carries no Feliz; a host that authors in Feliz takes this package beside it. Apache-2.0 licensed.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>fuaran;renderer;feliz;react;fable</PackageTags>
+    <!-- Nullness off, on Fuaran.UI.Renderer's own terms: under Fable the ENTRY
+         project's properties govern the whole transpiled graph, so entering here
+         compiles the renderer's sources (and Feliz's) under this project's
+         settings, and the renderer's browser arms need nullness off. -->
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <!-- Pack source for Fable consumers under fable/, like every client-tier
+       package; the Fable portability gate derives its set from this path. -->
+  <ItemGroup>
+    <Content Include="**\*.fsproj;**\*.fs" Exclude="**\*.fs.js;**\bin\**;**\obj\**" PackagePath="fable\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Interop.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fable.Core" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>
