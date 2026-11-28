@@ -376,6 +376,81 @@ type private Json =
     | JArray of Json list
     | JObject of Map<string, Json>
 
+// ─── Phase 2880 — the read log: which members a decode read (WIRE_FORMAT §15.8) ───
+//
+// A member a decoder never reads is undeclared, and it is KEPT. Every closed-table object
+// the decoder opens goes through `requireObject` or a field helper below, and every member
+// it reads goes through those helpers, so the log holds, per opened object (by reference),
+// the names read. When a node has decoded, `keptMembersOf` walks the node's own JSON: an
+// unread member of an opened object is kept at its path inside the node. A map-typed
+// object (`requireMap`) holds entries, never members, so all of its keys count as read; an
+// object no helper opened (a rule-12 payload, carried whole by its own slot) is not walked;
+// and a child node's object is the child's, with its own slot.
+//
+// Under Fable the slot is a plain static, as `DefectSink`'s is.
+[<AllowNullLiteral>]
+type private ReadLog() =
+    member val Opened =
+        System.Collections.Generic.Dictionary<obj, System.Collections.Generic.HashSet<string>>(HashIdentity.Reference)
+
+    member val Nodes = System.Collections.Generic.HashSet<obj>(HashIdentity.Reference)
+
+#if FABLE_COMPILER
+type private ReadTracker() =
+    static let mutable current: ReadLog = null
+
+    static member Current
+        with get () = current
+        and set (v: ReadLog) = current <- v
+#else
+type private ReadTracker =
+    [<System.ThreadStatic; DefaultValue>]
+    static val mutable private current: ReadLog
+
+    static member Current
+        with get () = ReadTracker.current
+        and set (v: ReadLog) = ReadTracker.current <- v
+#endif
+
+/// Run `f` with a read log on: a fresh one at the outermost decode, the caller's when one
+/// is already on (a node decoded inside an op shares the op's document).
+let private withReadLog (f: unit -> 'a) : 'a =
+    if isNull ReadTracker.Current then
+        ReadTracker.Current <- ReadLog()
+
+        try
+            f ()
+        finally
+            ReadTracker.Current <- null
+    else
+        f ()
+
+/// The read set of an object, opening it on first use.
+let private readSetOf (m: Map<string, Json>) : System.Collections.Generic.HashSet<string> =
+    let log = ReadTracker.Current
+
+    if isNull log then
+        null
+    else
+        match log.Opened.TryGetValue(box m) with
+        | true, set -> set
+        | _ ->
+            let set = System.Collections.Generic.HashSet<string>()
+            log.Opened.[box m] <- set
+            set
+
+let private logOpened (m: Map<string, Json>) : unit = readSetOf m |> ignore
+
+let private logRead (m: Map<string, Json>) (key: string) : unit =
+    match readSetOf m with
+    | null -> ()
+    | set -> set.Add key |> ignore
+
+let private logNode (m: Map<string, Json>) : unit =
+    match ReadTracker.Current with
+    | null -> ()
+    | log -> log.Nodes.Add(box m) |> ignore
+
 /// The §21 JSON-level bounds as Core's limits record: this host's values, one
 /// count (`MaxArrayLength`) for both an array's items and an object's members.
 let private wireJsonLimits: JsonLimits =
@@ -1446,12 +1521,71 @@ let rec private jsonToJValStrict (depth: int) (path: string) (j: Json) : Result<
 /// Map a `Fuaran.Core.ColumnError` (the compute codecs' six-code envelope) into this host's
 /// `DecodeError` at `path` — surfaced as `WRONG_TYPE` (the closest host code for a
 /// structurally-parsed but invalid compute sub-tree), with the Core failure as the message.
+/// Phase 2880 — the members of a node's JSON that no decoder read (WIRE_FORMAT §15.8), by
+/// path inside the node. The walk descends only through members that were read, and only
+/// into objects a helper opened; it stops at a child node (its own slot holds its kept
+/// members) and at an object nothing opened (a payload its own slot carries whole). A
+/// member whose value holds a null at any depth is not kept (§15.8 rule 3), and a kept
+/// value is the rule-12 payload of its JSON, so it re-encodes canonically.
+let private keptMembersOf (node: Map<string, Json>) : Fuaran.UI.HostPrelude.KeptMembers =
+    match ReadTracker.Current with
+    | null -> Fuaran.UI.HostPrelude.KeptMembers.empty
+    | log ->
+        let rec holdsNull (j: Json) =
+            match j with
+            | JNull -> true
+            | JArray xs -> List.exists holdsNull xs
+            | JObject m -> m |> Map.exists (fun _ v -> holdsNull v)
+            | _ -> false
+
+        let kept = ResizeArray<Fuaran.Core.PathSegment list * Fuaran.Core.JVal>()
+
+        let rec object (rev: Fuaran.Core.PathSegment list) (m: Map<string, Json>) =
+            match log.Opened.TryGetValue(box m) with
+            | true, read ->
+                for KeyValue(k, v) in m do
+                    let at = Fuaran.Core.PathSegment.Key k :: rev
+
+                    if read.Contains k then
+                        value at v
+                    elif not (holdsNull v) then
+                        match jsonToJValStrict 0 "$" v with
+                        | Ok jv -> kept.Add(List.rev at, jv)
+                        | Error _ -> ()
+            | _ -> ()
+
+        and value (rev: Fuaran.Core.PathSegment list) (j: Json) =
+            match j with
+            | JObject m when not (log.Nodes.Contains(box m)) -> object rev m
+            | JArray xs -> xs |> List.iteri (fun i x -> value (Fuaran.Core.PathSegment.Index i :: rev) x)
+            | _ -> ()
+
+        object [] node
+
+        if kept.Count = 0 then
+            Fuaran.UI.HostPrelude.KeptMembers.empty
+        else
+            Fuaran.UI.HostPrelude.KeptMembers.ofEntries kept
+
 let private coreError (path: string) (ce: Fuaran.Core.ColumnError) : DecodeError =
     DecodeError.create DecodeErrorCode.WRONG_TYPE path (Fuaran.Core.ColumnCodec.errorString ce) None
 
 let private requireObject (path: string) (j: Json) : Result<Map<string, Json>, DecodeError> =
     match j with
-    | JObject fields -> Ok fields
+    | JObject fields ->
+        logOpened fields
+        Ok fields
+    | _ -> wrongType path "JSON object"
+
+/// An object whose members are ENTRIES of a map type (`Custom.props`, `FragmentRef.args`, an
+/// I18n argument bag): every key is the map's, so none is undeclared (§15.8).
+let private requireMap (path: string) (j: Json) : Result<Map<string, Json>, DecodeError> =
+    match j with
+    | JObject fields ->
+        for KeyValue(k, _) in fields do
+            logRead fields k
+
+        Ok fields
     | _ -> wrongType path "JSON object"
 
 /// Lenient AI-ingest (WIRE_FORMAT.md §3.6, generalised 2026-07-18): a Static
@@ -1522,7 +1656,9 @@ let private requireArray (path: string) (j: Json) : Result<Json list, DecodeErro
     | JArray xs -> Ok xs
     | _ -> wrongType path "JSON array"
 
-let private tryField (fields: Map<string, Json>) (key: string) : Json option = Map.tryFind key fields
+let private tryField (fields: Map<string, Json>) (key: string) : Json option =
+    logRead fields key
+    Map.tryFind key fields
 
 /// Phase 2300 — the declared-default rule (WIRE_FORMAT.md §3.6): a field the
 /// IDL declares `omitDefault` is ABSENT from the canonical form at its default,
@@ -1546,7 +1682,7 @@ let private requireField
     (key: string)
     (expected: string)
     : Result<Json, DecodeError> =
-    match Map.tryFind key fields with
+    match tryField fields key with
     | Some j -> Ok j
     | None -> missingField path key expected
 
@@ -1570,7 +1706,10 @@ let private requireFieldAliased
     (aliases: string list)
     (expected: string)
     : Result<Json, DecodeError> =
-    match Map.tryFind canonical fields with
+    // Every alias is a declared spelling, read whether or not the canonical one won.
+    aliases |> List.iter (logRead fields)
+
+    match tryField fields canonical with
     | Some j -> Ok j
     | None ->
         match aliases |> List.tryPick (fun a -> Map.tryFind a fields) with
@@ -1578,12 +1717,14 @@ let private requireFieldAliased
         | None -> missingField path canonical expected
 
 let private optFieldAliased (fields: Map<string, Json>) (canonical: string) (aliases: string list) : Json option =
-    match Map.tryFind canonical fields with
+    aliases |> List.iter (logRead fields)
+
+    match tryField fields canonical with
     | Some j -> Some j
     | None -> aliases |> List.tryPick (fun a -> Map.tryFind a fields)
 
 let private requireDiscriminator (path: string) (fields: Map<string, Json>) : Result<string, DecodeError> =
-    match Map.tryFind "$type" fields with
+    match tryField fields "$type" with
     | Some(JString s) -> Ok s
     | Some _ -> wrongType (path + ".$type") "JSON string discriminator"
     | None -> missingField path "$type" "DU object must carry a '$type' discriminator string"
@@ -2351,7 +2492,7 @@ let rec private decodeObj (j: Json) : obj =
 let private decodeJVal (path: string) (j: Json) : Result<JVal, DecodeError> = jsonToJValStrict 1 path j
 
 let private decodeJValMap (path: string) (j: Json) : Result<Map<string, JVal>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // Every member, then the first error (WIRE_FORMAT §29.1).
@@ -2628,7 +2769,7 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
         // unlike the options map, which is refused. Observed as every
         // provider's first guess (21/31 launch-eval failures repair-proof).
         | Some(JObject _ as pJ) ->
-            match requireObject (path + ".params") pJ with
+            match requireMap (path + ".params") pJ with
             | Error e -> Error e
             | Ok pf ->
                 pf
@@ -2673,7 +2814,7 @@ and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, D
 /// conformant host refused it — a cross-host divergence with no fixture to catch
 /// it, manufactured by this phase.
 and private decodeI18nArgMap (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // Every argument, then the first error (WIRE_FORMAT §29.1).
@@ -3353,7 +3494,7 @@ and private bindingGeneric<'T>
                     "Static | Query | Filter | Selection | State | Now | Computed | I18n | Local | Format | Transform | Expr | Invoke | Bound"
 
 and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         let entries = fields |> Map.toList
@@ -7140,7 +7281,7 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
 /// (`…map.Delayed`), because "one of your tones is wrong" is not an actionable
 /// report when the map has nine entries.
 let private decodeToneMap (path: string) (j: Json) : Result<Map<string, ToneVariant>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // `decodeTone` is reused for the VALUE vocabulary + the Phase 460 aliases,
@@ -9376,7 +9517,7 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 match tryField fields "args" with
                 | None -> Ok None
                 | Some a ->
-                    match requireObject (path + ".args") a with
+                    match requireMap (path + ".args") a with
                     | Error e -> Error e
                     | Ok argFields ->
                         argFields
@@ -9447,7 +9588,7 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 match tryField fields "inputs" with
                 | None -> Ok None
                 | Some a ->
-                    match requireObject (path + ".inputs") a with
+                    match requireMap (path + ".inputs") a with
                     | Error e -> Error e
                     | Ok argFields ->
                         argFields
@@ -9762,7 +9903,7 @@ and private decodeNodeAst (w: Walk) (path: string) (j: Json) : Result<Node<obj>,
                 (sprintf "the document holds more than the wire limit MaxNodes = %d nodes" Fuaran.UI.WireLimits.MaxNodes)
                 (Some(sprintf "a tree of no more than %d nodes in total" Fuaran.UI.WireLimits.MaxNodes))
         else
-            decodeNodeAstCore w path j
+            withReadLog (fun () -> decodeNodeAstCore w path j)
 
 /// The node decode proper. Reached only through `decodeNodeAst`, which is what
 /// enforces `MaxDepth` — split out purely so the guard is a two-line function
@@ -9771,6 +9912,8 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
+        logNode fields
+
         let idR =
             match requireField path fields "id" "Node id string" with
             | Error e -> Error e
@@ -9859,7 +10002,7 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Motion = None
                   Fallback = fallback
                   ExtraAttributes = None
-                  KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
+                  KeptMembers = keptMembersOf fields
                   Tooltip = tooltip
                   Visible = visible }
         | Error e, _, _, _, _, _, _, _

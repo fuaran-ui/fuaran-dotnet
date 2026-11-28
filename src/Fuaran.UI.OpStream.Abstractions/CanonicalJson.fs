@@ -182,8 +182,101 @@ let private bindingJson (b: Binding<obj>) : JVal =
 // to values. Adding a Node-bearing payload to any of them means adding the
 // projection in the same change.
 
+// ─── Phase 2880 — kept members (WIRE_FORMAT §15.8) ─────────────────────────
+//
+// A node's `KeptMembers` hold the members its JSON carried that its shape does not
+// declare, by path inside the node. The generated encoder writes none of them (the slot is
+// host-only), so they are spliced into its `JVal` here, before render; the renderer sorts
+// every object's keys, so each lands at its ordinal place among the declared ones (§15.8
+// rule 1). A child node's members are its own: the walk below finds each child's place
+// through `NodeChildren.slots`, the one enumeration of where a node holds another.
+
+/// The wire path of a `NodeChildren` slot label (`fallback`, `state.onLoading`,
+/// `Box.children[2]`, `ErrorBoundary.child`, `Switch.cases[0].child`, `Switch.default`,
+/// `FragmentRef.args[k]`, `Mount.inputs[k]`). A label that begins with a kind's name is a
+/// position inside `kind`; a slot argument's node is its entry's `tree`.
+let private slotWirePath (label: string) : PathSegment list option =
+    let rec tokens (text: string) (acc: PathSegment list) : PathSegment list option =
+        let text = if text.StartsWith "." then text.Substring 1 else text
+
+        if text = "" then
+            Some(List.rev acc)
+        else
+            let stop = text.IndexOfAny [| '.'; '[' |]
+
+            let name, tail =
+                if stop < 0 then
+                    text, ""
+                else
+                    text.Substring(0, stop), text.Substring stop
+
+            let acc = PathSegment.Key name :: acc
+
+            if tail.StartsWith "[" then
+                match tail.IndexOf ']' with
+                | close when close > 0 ->
+                    let inner = tail.Substring(1, close - 1)
+                    let after = tail.Substring(close + 1)
+
+                    match name with
+                    | "args"
+                    | "inputs" -> tokens after (PathSegment.Key "tree" :: PathSegment.Key inner :: acc)
+                    | _ ->
+                        match Int32.TryParse inner with
+                        | true, ix -> tokens after (PathSegment.Index ix :: acc)
+                        | _ -> None
+                | _ -> None
+            else
+                tokens tail acc
+
+    match label.IndexOf '.' with
+    | dot when dot > 0 && Char.IsUpper label.[0] -> tokens (label.Substring(dot + 1)) [ PathSegment.Key "kind" ]
+    | _ -> tokens label []
+
+/// `j` with `f` applied to the value at `path`; a path that does not resolve leaves `j`.
+let rec private updateAt (path: PathSegment list) (f: JVal -> JVal) (j: JVal) : JVal =
+    match path, j with
+    | [], _ -> f j
+    | PathSegment.Key k :: rest, JObj members ->
+        JObj(
+            members
+            |> List.map (fun (mk, v) -> if mk = k then mk, updateAt rest f v else mk, v)
+        )
+    | PathSegment.Index i :: rest, JArr items ->
+        JArr(items |> List.mapi (fun ix v -> if ix = i then updateAt rest f v else v))
+    | _ -> j
+
+/// `j` with the member at `path` set to `v`. The member's object must exist: an entry whose
+/// object an op replaced is gone from the slot already (§15.8, what an op does).
+let private setAt (path: PathSegment list) (v: JVal) (j: JVal) : JVal =
+    match List.rev path with
+    | PathSegment.Key k :: revParent ->
+        updateAt
+            (List.rev revParent)
+            (fun o ->
+                match o with
+                | JObj members -> JObj((members |> List.filter (fun (mk, _) -> mk <> k)) @ [ k, v ])
+                | other -> other)
+            j
+    | _ -> j
+
+/// A node's encoding with every node's kept members written back, its own and its children's.
+let rec private withKept<'Msg> (n: Node<'Msg>) (j: JVal) : JVal =
+    let own =
+        Fuaran.UI.HostPrelude.KeptMembers.entries n.KeptMembers
+        |> List.fold (fun acc (path, v) -> setAt path v acc) j
+
+    Fuaran.UI.NodeChildren.slots n
+    |> List.fold
+        (fun acc slot ->
+            match slotWirePath slot.Label with
+            | Some path -> updateAt path (withKept slot.Node) acc
+            | None -> acc)
+        own
+
 let private nodeJson<'Msg> (n: Node<'Msg>) : JVal =
-    Fuaran.UI.Generated.encodeNodeJson (Fuaran.UI.Ops.Introspect.canonicalForm n)
+    let canonical = Fuaran.UI.Ops.Introspect.canonicalForm n
+    withKept canonical (Fuaran.UI.Generated.encodeNodeJson canonical)
 
 let private nodeKindJson<'Msg> (k: NodeKind<'Msg>) : JVal =
     Fuaran.UI.Generated.encodeNodeKindJson (Fuaran.UI.Ops.Introspect.canonicalFormKind k)
