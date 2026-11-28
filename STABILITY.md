@@ -7813,10 +7813,10 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## The slot after 0.109.1 (DRAFT — untagged, number not yet raised) — opened after v0.109.1 was released, by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive
+## 0.110.0 — the slot opened after v0.109.1 was released (DRAFT — untagged), by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive
 
-**Class: additive.** `v0.109.1` is tagged, so nothing rides it. `<Version>` still reads 0.109.1 when this entry is
-written: the raise that names this slot is the version ledger's act, and an additive change takes the next minor.
+**Class: additive.** `v0.109.1` is tagged, so nothing rides it. The version ledger cut `<Version>` to 0.110.0 for
+this slot: an additive change takes the next minor.
 
 ### Phase 2513 — a `Custom` renderer may be a DOM mount (additive)
 
