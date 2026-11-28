@@ -11,7 +11,6 @@ module Fuaran.UI.Renderer.Server.Tests.CustomContract
 // ============================================================================
 
 open Expecto
-open Feliz.ViewEngine
 open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -39,14 +38,14 @@ let private contract =
     CustomContract.create "sample" "sparkline" encode decode sample [] HashStrictness.StrictReplay
 
 // The host render fn receives the typed props already decoded by the contract.
-let private render (p: Spark) : ReactElement =
-    Html.div [ prop.className "sample-sparkline"; prop.text p.Label ]
+let private render (p: Spark) : Markup =
+    Markup.textElement "div" [ "class", "sample-sparkline" ] p.Label
 
 let private reg = Registry.empty |> Registry.registerContract contract render
 
 let private renderBag (bag: Map<string, JVal>) : string =
     match Registry.tryRender contract.ModuleId contract.ComponentId reg with
-    | Some closure -> Feliz.ViewEngine.Render.htmlView (closure bag)
+    | Some closure -> Markup.toHtml (closure bag)
     | None -> failtest "the contract renderer must be registered"
 
 [<Tests>]

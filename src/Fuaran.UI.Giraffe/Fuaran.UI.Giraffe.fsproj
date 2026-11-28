@@ -29,7 +29,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
-    <PackageReference Include="Feliz.ViewEngine" />
     <PackageReference Include="Giraffe" />
   </ItemGroup>
 </Project>

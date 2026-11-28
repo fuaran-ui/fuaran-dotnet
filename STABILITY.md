@@ -7848,6 +7848,48 @@ record gains a field, no union gains a case, and no existing member changes.
 beside its control), the DOM-mount cases in `src/Fuaran.UI.Tests/CustomRendererTests.fs` and
 `src/Fuaran.UI.Renderer.Server.Tests/CustomContractServerTests.fs`.
 
+### Phase 2515 — the server renderer emits strings with no Feliz.ViewEngine (breaking)
+
+**Class: breaking.** Packages `Fuaran.UI.Renderer.Server` and `Fuaran.UI.Giraffe`. Neither references
+`Feliz.ViewEngine` any longer, so neither restore closure holds a Feliz package. The server's HTML is written by the
+package's own emitter, `Markup`, over the shared `ElementPlan` (the precedent is the TypeScript server renderer's string
+builder); the five files that built a ViewEngine element tree now build `Markup`.
+
+- **New in `Fuaran.UI.Renderer.Server`.** The type `Markup`, an inert HTML fragment, and the module `Markup`:
+  `escape`, `empty`, `text`, `raw`, `concat`, `element`, `textElement`, `rawElement`, `voidElement`, `ofPlan` (the
+  `ElementPlan` emitter) and `toHtml`.
+- **Retyped — breaking.** `Registry.ServerCustomRenderer` is `Map<string, JVal> -> Markup` (it returned a ViewEngine
+  `ReactElement`), so every registration that takes one changes with it: `register`, `registerInScope`,
+  `registerWithHash`, `registerInScopeWithHash`, and `registerContract`'s render function (`'Props -> Markup`).
+  `domMountFallback`, `registerDomMount` and `registerDomMountInScope` (Phase 2513) take the same arguments, and the
+  fallback they serve is byte-identical. `Render.renderToElement`, `Render.renderBehindToElement`,
+  `Render.themeStyleElement`, `Render.themeStyleElementWithCsp`, `Hydration.embeddedTreeElement` and
+  `Resume.envelopeElement` return `Markup`.
+- **What does not change.** Every entry point that returns a string — `Render.render` and its `renderWith*` siblings,
+  `Hydration.renderHydratable` / `renderWithIslands`, `Resume.renderResumable`, every `Email` entry, and the Giraffe
+  handlers and `Document.render` — emits the same bytes: the same five characters escaped the same way (`&apos;` for an
+  apostrophe), attributes in the same order, void elements with no closing tag. The SSR parity corpus, the hydration ids
+  and the email corpus are unchanged, and `Fuaran.UI.Giraffe` exposes no member that changes type. One edge moves: a
+  null string as text or as an attribute value now writes nothing, where ViewEngine threw while building the element (the
+  per-node guard then served the render-failure placeholder).
+- **Escape hatch.** `Markup.raw` is the host trust boundary a registered `Custom` renderer already was; it widens
+  nothing. The renderer still does not inspect what a host renderer returns.
+
+**What a consumer must do.**
+
+- A server `Custom` renderer built with Feliz.ViewEngine keeps its route through `Markup.raw`, with the host's own
+  `Feliz.ViewEngine` reference (this package no longer brings one):
+  `Registry.register m c (fun props -> Markup.raw (Feliz.ViewEngine.Render.htmlView (render props)))`. A renderer with
+  no other use for ViewEngine is shorter written with the `Markup` builders.
+- A host that composed `renderToElement`, `themeStyleElement`, `embeddedTreeElement` or `envelopeElement` into its own
+  ViewEngine document takes `Markup.toHtml` of the value and places the string as raw markup
+  (`Feliz.ViewEngine.Interop.createRawTextElement`).
+- A project that used ViewEngine through these packages without referencing it adds its own reference.
+
+**Certified by** `src/Fuaran.UI.Renderer.Server.Tests/MarkupTests.fs` (each emitter rule pinned by its bytes) and the
+unchanged corpora: `SsrParityTests`, `HydrationTests`, `IslandsTests`, `ResumeTests` and `EmailProjectionTests` with its
+golden `email-corpus/`.
+
 ---
 
 ## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix

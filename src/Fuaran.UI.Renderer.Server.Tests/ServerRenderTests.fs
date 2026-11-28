@@ -14,7 +14,6 @@ module Fuaran.UI.Renderer.Server.Tests.ServerRenderTests
 // ============================================================================
 
 open Expecto
-open Feliz.ViewEngine
 open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -215,7 +214,7 @@ let serverRenderTests =
                           | Some other -> Fuaran.Core.Json.render other
                           | None -> "?"
 
-                      Html.div [ prop.className "host-score"; prop.custom ("data-clef", clef) ])
+                      Markup.element "div" [ "class", "host-score"; "data-clef", clef ] [])
 
               let html = Render.renderWith registry BindingResolver.empty custom
               Expect.isTrue (contains "host-score" html) "host renderer output inlined"
@@ -235,7 +234,7 @@ let serverRenderTests =
               let registry =
                   Registry.empty
                   |> Registry.registerWithHash "music" "score" "different-hash" (fun _ ->
-                      Html.div [ prop.className "host-score" ])
+                      Markup.element "div" [ "class", "host-score" ] [])
 
               let html = Render.renderWith registry BindingResolver.empty custom
               Expect.isTrue (contains "fuaran-custom-hash-mismatch" html) "hash-mismatch class"
@@ -267,7 +266,7 @@ let serverRenderTests =
               let registry =
                   Registry.empty
                   |> Registry.registerWithHash "music" "score" "different-hash" (fun _ ->
-                      Html.div [ prop.className "host-score" ])
+                      Markup.element "div" [ "class", "host-score" ] [])
 
               let html = Render.renderWith registry BindingResolver.empty custom
 
@@ -286,7 +285,7 @@ let serverRenderTests =
               let registry =
                   Registry.empty
                   |> Registry.registerWithHash "music" "score" "some-hash" (fun _ ->
-                      Html.div [ prop.className "host-score" ])
+                      Markup.element "div" [ "class", "host-score" ] [])
 
               let html = Render.renderWith registry BindingResolver.empty custom
 
@@ -300,12 +299,13 @@ let serverRenderTests =
 // ============================================================================
 //  Phase 788 — SSR attribute-NAME injection.
 //
-//  Feliz.ViewEngine's `ViewBuilder.buildElement` emits `" " + key + "=\"" +
-//  value + "\""` and `Interop.mkAttr` escapes the VALUE only: nothing anywhere
-//  escapes an attribute NAME. React's own attribute-name validation gives the
-//  client renderer an accidental floor the server path has never had, so the
-//  key gate (`Sanitize.isAllowedExtraAttributeKey`) plus the emission-site
-//  re-check (`Sanitize.isSafeAttributeName`) are the whole defence here.
+//  The server emitter (`Markup`, which replaced Feliz.ViewEngine in Phase 2515
+//  and writes the same bytes) emits `" " + name + "=\"" + value + "\""` and
+//  escapes the VALUE only: nothing anywhere escapes an attribute NAME. React's
+//  own attribute-name validation gives the client renderer an accidental floor
+//  the server path has never had, so the key gate
+//  (`Sanitize.isAllowedExtraAttributeKey`) plus the emission-site re-check
+//  (`Sanitize.isSafeAttributeName`) are the whole defence here.
 //
 //  These assert on the real emitted HTML string, not on the predicate — the
 //  predicate is pinned in `Fuaran.UI.Tests/SanitizeTests.fs`. Each negative
@@ -383,15 +383,14 @@ let extraAttributeNameInjectionTests =
           }
 
           test "go-red self-test: the payload IS an injection if the gate does not fire" {
-              // Proves the assertions above measure something. `prop.custom` is
+              // Proves the assertions above measure something. `Markup.element` is
               // the same verbatim-name emission site `extraAttrProps` reaches;
               // handed the payload directly — i.e. with the gate bypassed — it
               // produces exactly the live handler the gate exists to stop. If a
               // future edit made this test pass with the injection absent, the
               // emission site would have gained its own escaping and the
               // negative assertions above would be measuring nothing.
-              let unguarded =
-                  Feliz.ViewEngine.Render.htmlView (Html.div [ prop.custom (injectedKey, "v") ])
+              let unguarded = Markup.toHtml (Markup.element "div" [ injectedKey, "v" ] [])
 
               Expect.isTrue (contains "onmouseover=alert(document.domain)" unguarded) "unguarded emission IS injectable"
           }

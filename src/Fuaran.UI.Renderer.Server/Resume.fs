@@ -27,7 +27,6 @@ module Fuaran.UI.Renderer.Server.Resume
 //  format on purpose so the two converge cleanly.
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 open Fuaran.UI.OpStream.Abstractions
@@ -442,16 +441,17 @@ let envelopeElement
     (modelJson: string)
     (initEffects: (string * InitEffectInput) list)
     (node: Node<obj>)
-    : ReactElement =
+    : Markup =
     let rootId = node.Id
     let json = encodeEnvelope moduleId modelJson initEffects node
 
-    Html.script
-        [ prop.custom ("type", "application/json")
-          prop.id (scriptId rootId)
-          prop.custom ("data-fuaran-resume-root", rootId)
-          prop.custom ("data-fuaran-resume-hash", treeHash node)
-          prop.dangerouslySetInnerHTML json ]
+    Markup.rawElement
+        "script"
+        [ "type", "application/json"
+          "id", scriptId rootId
+          "data-fuaran-resume-root", rootId
+          "data-fuaran-resume-hash", treeHash node ]
+        json
 
 /// Render a **resumable** HTML string: the inert server-rendered body (the same
 /// `Render.render` path hydration uses — crawlable, no-JS HTML) plus the resume
@@ -467,4 +467,4 @@ let renderResumable
     (node: Node<obj>)
     : string =
     Render.render sources node
-    + Render.htmlView (envelopeElement moduleId modelJson initEffects node)
+    + Markup.toHtml (envelopeElement moduleId modelJson initEffects node)

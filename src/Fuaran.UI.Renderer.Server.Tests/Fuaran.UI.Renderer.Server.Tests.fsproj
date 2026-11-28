@@ -13,6 +13,8 @@
          so a git worktree resolves it through FUARAN_WIRE_FIXTURES rather than skipping silently.
          Must compile FIRST: the resolvers below delegate to it. -->
     <Compile Include="..\..\tests\corpus-root\CorpusRoot.fs" Link="CorpusRoot.fs" />    <Compile Include="ServerRenderTests.fs" />
+    <!-- Phase 2515 — the string emitter's own rules, pinned by bytes. -->
+    <Compile Include="MarkupTests.fs" />
     <Compile Include="DrawingSvgTests.fs" />
     <!-- Phase 1098 — the SSR half of the `Sparkline → Drawing` lowering: the
          server draws real geometry, and its bytes ARE the shared lowering

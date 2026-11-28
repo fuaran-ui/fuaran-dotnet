@@ -2,7 +2,7 @@
 
 The **emission-agnostic render spine** for the Fuaran UI language. This package
 holds the parity-critical logic that every Fuaran renderer — the Feliz/React
-client renderer (`Fuaran.UI.Renderer`) and the Feliz.ViewEngine server renderer
+client renderer (`Fuaran.UI.Renderer`) and the string-emitting server renderer
 (`Fuaran.UI.Renderer.Server`) — must compute *identically*, factored out so the
 two backends consume **one** source of truth instead of forking it.
 

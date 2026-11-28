@@ -13,8 +13,9 @@ namespace Fuaran.UI.Giraffe
 //
 //  Injection safety (SANITIZATION.md discipline):
 //   - Text-shaped fields (title, meta description, OG/Twitter content) are
-//     emitted through `Feliz.ViewEngine`, which HTML-escapes text + attribute
-//     values — a `<script>` substring in a title cannot break out.
+//     emitted through the server renderer's `Markup` builders, which
+//     HTML-escape text + attribute values — a `<script>` substring in a title
+//     cannot break out.
 //   - URL-shaped fields (canonical, stylesheet hrefs, script srcs) route
 //     through `Fuaran.UI.Renderer.Sanitize.sanitizeUrlOrBlank` — a
 //     `javascript:` href becomes `about:blank`.
@@ -25,9 +26,9 @@ namespace Fuaran.UI.Giraffe
 //     JSON parsers read the escapes back, so the structured data is unchanged.
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Server
 
 /// A `<script>` reference for the document head. `Module` emits
 /// `type="module"`; `Defer` / `Async` emit the matching boolean attributes.
@@ -213,7 +214,7 @@ module Document =
         json.Replace("<", "\\u003c").Replace(">", "\\u003e").Replace("&", "\\u0026")
 
     /// Escape an HTML attribute value for the hand-emitted `<html>` / `<body>`
-    /// open tags (the `<head>` content escapes via ViewEngine; these two tags
+    /// open tags (the `<head>` content escapes via `Markup`; these two tags
     /// are concatenated as strings so they escape here).
     let private attrEscape (s: string) : string =
         s.Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;")
@@ -228,7 +229,7 @@ module Document =
     /// `HtmlAttributes` / `BodyAttributes` key of `data-x=1 onload=alert(1) z`
     /// was not a mangled name; it was three attributes, one of them a live event
     /// handler, on the document's own `<html>` element. These two tags are
-    /// concatenated as strings rather than built through ViewEngine, which is
+    /// concatenated as strings rather than built through `Markup`, which is
     /// precisely why the gate the rest of the renderer gets for free had to be
     /// applied by hand — and was not.
     ///
@@ -242,59 +243,58 @@ module Document =
         |> List.map (fun (k, v) -> sprintf " %s=\"%s\"" k (attrEscape v))
         |> String.concat ""
 
-    /// The `<head>` element built via ViewEngine (text + attribute escaping for
+    /// The `<head>` element built via `Markup` (text + attribute escaping for
     /// free); URL fields sanitized, JSON-LD script-escaped.
-    let private headElement (shell: DocumentShell) : ReactElement =
-        Html.head
-            [ Html.meta [ prop.custom ("charset", "utf-8") ]
-              Html.meta
-                  [ prop.custom ("name", "viewport")
-                    prop.custom ("content", "width=device-width, initial-scale=1") ]
-              Html.title [ prop.text shell.Title ]
+    let private headElement (shell: DocumentShell) : Markup =
+        Markup.element
+            "head"
+            []
+            [ Markup.voidElement "meta" [ "charset", "utf-8" ]
+              Markup.voidElement "meta" [ "name", "viewport"; "content", "width=device-width, initial-scale=1" ]
+              Markup.textElement "title" [] shell.Title
               match shell.MetaDescription with
-              | Some d -> Html.meta [ prop.custom ("name", "description"); prop.custom ("content", d) ]
-              | None -> Html.none
+              | Some d -> Markup.voidElement "meta" [ "name", "description"; "content", d ]
+              | None -> ()
               match shell.Canonical with
-              | Some url -> Html.link [ prop.rel "canonical"; prop.href (Sanitize.sanitizeUrlOrBlank url) ]
-              | None -> Html.none
+              | Some url -> Markup.voidElement "link" [ "rel", "canonical"; "href", Sanitize.sanitizeUrlOrBlank url ]
+              | None -> ()
               for (property, content) in shell.OpenGraph do
-                  Html.meta [ prop.custom ("property", property); prop.custom ("content", content) ]
+                  Markup.voidElement "meta" [ "property", property; "content", content ]
               for (name, content) in shell.TwitterCard do
-                  Html.meta [ prop.custom ("name", name); prop.custom ("content", content) ]
+                  Markup.voidElement "meta" [ "name", name; "content", content ]
               for href in shell.Stylesheets do
-                  Html.link [ prop.rel "stylesheet"; prop.href (Sanitize.sanitizeUrlOrBlank href) ]
+                  Markup.voidElement "link" [ "rel", "stylesheet"; "href", Sanitize.sanitizeUrlOrBlank href ]
               for s in shell.Scripts do
-                  Html.script (
-                      [ prop.src (Sanitize.sanitizeUrlOrBlank s.Src) ]
-                      @ (if s.Module then [ prop.custom ("type", "module") ] else [])
-                      @ (if s.Defer then [ prop.custom ("defer", "") ] else [])
-                      @ (if s.Async then [ prop.custom ("async", "") ] else [])
-                      // Phase 1523 — emitted only when set, so a shell that
-                      // declares none is byte-identical to the pre-1523
-                      // emission. ViewEngine escapes these attribute VALUES, so
-                      // the host's own nonce / digest strings need no handling
-                      // here beyond being placed.
-                      //
-                      // Phase 1545 — the script's OWN nonce wins; the shell's is
-                      // the default for scripts that declare none, so a host
-                      // adopting a nonce policy declares the value once
-                      // (`DocumentShell.withNonce`) rather than per script. A
-                      // shell with no nonce is the pre-1545 emission exactly.
-                      @ (match s.Nonce, shell.Nonce with
-                         | Some n, _
-                         | None, Some n -> [ prop.custom ("nonce", n) ]
-                         | None, None -> [])
-                      @ (match s.Integrity with
-                         | Some i -> [ prop.custom ("integrity", i) ]
-                         | None -> [])
-                      @ (match s.CrossOrigin with
-                         | Some c -> [ prop.custom ("crossorigin", c) ]
-                         | None -> [])
-                  )
+                  Markup.element
+                      "script"
+                      ([ "src", Sanitize.sanitizeUrlOrBlank s.Src ]
+                       @ (if s.Module then [ "type", "module" ] else [])
+                       @ (if s.Defer then [ "defer", "" ] else [])
+                       @ (if s.Async then [ "async", "" ] else [])
+                       // Phase 1523 — emitted only when set, so a shell that
+                       // declares none is byte-identical to the pre-1523
+                       // emission. `Markup` escapes these attribute VALUES, so
+                       // the host's own nonce / digest strings need no handling
+                       // here beyond being placed.
+                       //
+                       // Phase 1545 — the script's OWN nonce wins; the shell's is
+                       // the default for scripts that declare none, so a host
+                       // adopting a nonce policy declares the value once
+                       // (`DocumentShell.withNonce`) rather than per script. A
+                       // shell with no nonce is the pre-1545 emission exactly.
+                       @ (match s.Nonce, shell.Nonce with
+                          | Some n, _
+                          | None, Some n -> [ "nonce", n ]
+                          | None, None -> [])
+                       @ (match s.Integrity with
+                          | Some i -> [ "integrity", i ]
+                          | None -> [])
+                       @ (match s.CrossOrigin with
+                          | Some c -> [ "crossorigin", c ]
+                          | None -> []))
+                      []
               for jsonLd in shell.JsonLd do
-                  Html.script
-                      [ prop.custom ("type", "application/ld+json")
-                        prop.dangerouslySetInnerHTML (escapeForScript jsonLd) ] ]
+                  Markup.rawElement "script" [ "type", "application/ld+json" ] (escapeForScript jsonLd) ]
 
     /// The `<html>` attribute list with the locale-derived `lang` / `dir` pair
     /// prepended (Phase 1114).
@@ -329,12 +329,12 @@ module Document =
 
     /// Render a full `<!DOCTYPE html>` document around a body-fragment HTML
     /// string, resolving `LocaleSource.Ambient` against `ambientTag`. The
-    /// `<head>` is the escaping-safe ViewEngine emission; the body fragment
+    /// `<head>` is the escaping-safe `Markup` emission; the body fragment
     /// (already-safe HTML from `Renderer.Server`) is injected verbatim inside
     /// `<body>` with no wrapper element (so a hydration root keeps its own `id`
     /// / `data-fuaran-node-id`).
     let renderWithLocale (ambientTag: string) (shell: DocumentShell) (bodyHtml: string) : string =
-        let head = Render.htmlView (headElement shell)
+        let head = Markup.toHtml (headElement shell)
 
         sprintf
             "<!DOCTYPE html>\n<html%s>%s<body%s>%s</body></html>"

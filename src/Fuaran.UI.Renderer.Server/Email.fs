@@ -48,7 +48,6 @@ module Fuaran.UI.Renderer.Server.Email
 //  questions about one tree. See `docs/SSR.md` "Email-safe render projection".
 // ============================================================================
 
-open Feliz.ViewEngine
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
 
@@ -319,26 +318,25 @@ let private textStyle (opts: EmailOptions) (extra: string) : string = textIn opt
 /// A presentation table. `role="presentation"` keeps a screen reader from
 /// announcing layout scaffolding as data; the three zeroed attributes are the
 /// HTML-4 forms Outlook honours where the CSS equivalents are ignored.
-let private tableProps (extraStyle: string) : IReactProperty list =
-    [ prop.custom ("role", "presentation")
-      prop.custom ("cellpadding", "0")
-      prop.custom ("cellspacing", "0")
-      prop.custom ("border", "0")
-      prop.custom ("width", "100%")
-      prop.custom ("style", "border-collapse:collapse;width:100%;" + extraStyle) ]
+let private tableAttrs (extraStyle: string) : (string * string) list =
+    [ "role", "presentation"
+      "cellpadding", "0"
+      "cellspacing", "0"
+      "border", "0"
+      "width", "100%"
+      "style", "border-collapse:collapse;width:100%;" + extraStyle ]
 
-let private layoutTable (extraStyle: string) (rows: ReactElement list) : ReactElement =
-    Html.table (tableProps extraStyle @ [ prop.children [ Html.tbody rows ] ])
+let private layoutTable (extraStyle: string) (rows: Markup list) : Markup =
+    Markup.element "table" (tableAttrs extraStyle) [ Markup.element "tbody" [] rows ]
+
+/// A table row of cells.
+let private row (cells: Markup list) : Markup = Markup.element "tr" [] cells
 
 /// One stacked block: a full-width row whose single cell holds the child.
-let private stackedRow (cellStyle: string) (child: ReactElement) : ReactElement =
-    Html.tr
-        [ Html.td
-              [ prop.custom ("style", "padding:0 0 12px 0;" + cellStyle)
-                prop.custom ("valign", "top")
-                prop.children [ child ] ] ]
+let private stackedRow (cellStyle: string) (child: Markup) : Markup =
+    row [ Markup.element "td" [ "style", "padding:0 0 12px 0;" + cellStyle; "valign", "top" ] [ child ] ]
 
-let private stacked (children: ReactElement list) : ReactElement =
+let private stacked (children: Markup list) : Markup =
     layoutTable "" (children |> List.map (stackedRow ""))
 
 /// Chunk a list into rows of `n` — the grid projection. `n <= 0` degenerates to
@@ -354,7 +352,7 @@ let private chunk (n: int) (items: 'a list) : 'a list list =
 
 // ─── The renderer ───────────────────────────────────────────────────────────
 
-let private openLiveAnchor (opts: EmailOptions) (nodeId: string) (label: string) : ReactElement =
+let private openLiveAnchor (opts: EmailOptions) (nodeId: string) (label: string) : Markup =
     let linkStyle =
         textIn opts linkColour "display:inline-block;font-size:14px;line-height:20px;text-decoration:underline;"
 
@@ -362,22 +360,22 @@ let private openLiveAnchor (opts: EmailOptions) (nodeId: string) (label: string)
     | Some baseUrl ->
         let href = Sanitize.sanitizeUrlOrBlank (baseUrl + "#" + nodeId)
 
-        Html.a
-            [ prop.custom ("style", linkStyle)
-              prop.href href
-              prop.custom ("data-fuaran-email-open-live", nodeId)
-              prop.text (label + " — open live") ]
+        Markup.textElement
+            "a"
+            [ "style", linkStyle; "href", href; "data-fuaran-email-open-live", nodeId ]
+            (label + " — open live")
     | None ->
         // No live surface declared. Say what is not here rather than emitting a
         // dead anchor: the reader learns the digest is partial, which is true.
-        Html.span
-            [ prop.custom ("style", textIn opts mutedColour "font-size:14px;line-height:20px;")
-              prop.custom ("data-fuaran-email-open-live", nodeId)
-              prop.text (label + " — available in the live view") ]
+        Markup.textElement
+            "span"
+            [ "style", textIn opts mutedColour "font-size:14px;line-height:20px;"
+              "data-fuaran-email-open-live", nodeId ]
+            (label + " — available in the live view")
 
 /// The labelled note an `Omitted` kind leaves behind: nothing at all. Kept as a
 /// named function so the intent reads as a decision rather than a missing arm.
-let private omitted: ReactElement = Html.none
+let private omitted: Markup = Markup.empty
 
 let private headingStyle (opts: EmailOptions) (level: int) (variant: HeadingVariant) : string =
     let size, weight =
@@ -500,15 +498,14 @@ let rec private renderNode
     (depth: int)
     (ctx: Render.ServerRenderContext)
     (node: Node<obj>)
-    : ReactElement =
+    : Markup =
     if depth > Fuaran.UI.WireLimits.MaxDepth then
-        Html.p
-            [ prop.custom ("style", textIn opts mutedColour "font-size:13px;")
-              prop.text (
-                  "[subtree omitted: nesting exceeds the wire limit MaxDepth = "
-                  + string Fuaran.UI.WireLimits.MaxDepth
-                  + "]"
-              ) ]
+        Markup.textElement
+            "p"
+            [ "style", textIn opts mutedColour "font-size:13px;" ]
+            ("[subtree omitted: nesting exceeds the wire limit MaxDepth = "
+             + string Fuaran.UI.WireLimits.MaxDepth
+             + "]")
     else
         renderKind opts depth ctx node
 
@@ -517,15 +514,10 @@ and private children
     (depth: int)
     (ctx: Render.ServerRenderContext)
     (nodes: Node<obj> list)
-    : ReactElement list =
+    : Markup list =
     nodes |> List.map (renderNode opts (depth + 1) ctx)
 
-and private renderKind
-    (opts: EmailOptions)
-    (depth: int)
-    (ctx: Render.ServerRenderContext)
-    (node: Node<obj>)
-    : ReactElement =
+and private renderKind (opts: EmailOptions) (depth: int) (ctx: Render.ServerRenderContext) (node: Node<obj>) : Markup =
     // NOT `id` — that would shadow the `id` function inside these arms.
     let selfId = node.Id
     let text = Render.renderText ctx
@@ -555,40 +547,34 @@ and private renderKind
             // gives `<hr>` a margin no declaration reliably removes.
             layoutTable
                 ""
-                [ Html.tr
-                      [ Html.td
-                            [ prop.custom (
-                                  "style",
-                                  "border-top:1px solid " + ruleColour + ";font-size:0;line-height:0;height:1px;"
-                              )
-                              prop.children [ Html.text " " ] ] ] ]
+                [ row
+                      [ Markup.element
+                            "td"
+                            [ "style", "border-top:1px solid " + ruleColour + ";font-size:0;line-height:0;height:1px;" ]
+                            [ Markup.text " " ] ] ]
         | BoxRole.Card, _ ->
             let headingRow =
                 match spec.Heading with
                 | Some heading ->
-                    [ Html.tr
-                          [ Html.td
-                                [ prop.custom (
-                                      "style",
-                                      "padding:12px 16px;border-bottom:1px solid "
-                                      + ruleColour
-                                      + ";background:"
-                                      + panelColour
-                                      + ";"
-                                  )
-                                  prop.children
-                                      [ Html.p
-                                            [ prop.custom (
-                                                  "style",
-                                                  textStyle opts "font-size:15px;line-height:20px;font-weight:600;"
-                                              )
-                                              prop.text (text heading) ] ] ] ] ]
+                    [ row
+                          [ Markup.element
+                                "td"
+                                [ "style",
+                                  "padding:12px 16px;border-bottom:1px solid "
+                                  + ruleColour
+                                  + ";background:"
+                                  + panelColour
+                                  + ";" ]
+                                [ Markup.textElement
+                                      "p"
+                                      [ "style", textStyle opts "font-size:15px;line-height:20px;font-weight:600;" ]
+                                      (text heading) ] ] ]
                 | None -> []
 
             layoutTable
                 ("border:1px solid " + ruleColour + ";")
                 (headingRow
-                 @ [ Html.tr [ Html.td [ prop.custom ("style", "padding:16px;"); prop.children [ stacked kids ] ] ] ])
+                 @ [ row [ Markup.element "td" [ "style", "padding:16px;" ] [ stacked kids ] ] ])
         | BoxRole.Group, BoxLayout.Grid(cols, _, _) ->
             // The one place a table earns its keep: N-across KPI rows, which is
             // exactly the shape a digest opens with, and which flex/grid cannot
@@ -599,26 +585,28 @@ and private renderKind
             layoutTable
                 ""
                 [ for rowKids in chunk columns kids ->
-                      Html.tr
+                      row
                           [ for kid in rowKids ->
-                                Html.td
-                                    [ prop.custom ("width", width)
-                                      prop.custom ("valign", "top")
-                                      prop.custom ("style", "padding:0 8px 12px 0;vertical-align:top;width:" + width)
-                                      prop.children [ kid ] ] ] ]
+                                Markup.element
+                                    "td"
+                                    [ "width", width
+                                      "valign", "top"
+                                      "style", "padding:0 8px 12px 0;vertical-align:top;width:" + width ]
+                                    [ kid ] ] ]
         | BoxRole.Group, BoxLayout.Flex(Orientation.Horizontal, _, _) ->
             let count = max 1 (List.length kids)
             let width = string (100 / count) + "%"
 
             layoutTable
                 ""
-                [ Html.tr
+                [ row
                       [ for kid in kids ->
-                            Html.td
-                                [ prop.custom ("width", width)
-                                  prop.custom ("valign", "top")
-                                  prop.custom ("style", "padding:0 8px 0 0;vertical-align:top;width:" + width)
-                                  prop.children [ kid ] ] ] ]
+                            Markup.element
+                                "td"
+                                [ "width", width
+                                  "valign", "top"
+                                  "style", "padding:0 8px 0 0;vertical-align:top;width:" + width ]
+                                [ kid ] ] ]
         | _ -> stacked kids
 
     | NodeKind.SplitPanel spec ->
@@ -634,17 +622,19 @@ and private renderKind
 
         layoutTable
             ""
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("width", string leftPct + "%")
-                          prop.custom ("valign", "top")
-                          prop.custom ("style", "padding:0 8px 0 0;vertical-align:top;")
-                          prop.children [ stacked leftKids ] ]
-                    Html.td
-                        [ prop.custom ("width", string (100 - leftPct) + "%")
-                          prop.custom ("valign", "top")
-                          prop.custom ("style", "padding:0;vertical-align:top;")
-                          prop.children [ stacked rightKids ] ] ] ]
+            [ row
+                  [ Markup.element
+                        "td"
+                        [ "width", string leftPct + "%"
+                          "valign", "top"
+                          "style", "padding:0 8px 0 0;vertical-align:top;" ]
+                        [ stacked leftKids ]
+                    Markup.element
+                        "td"
+                        [ "width", string (100 - leftPct) + "%"
+                          "valign", "top"
+                          "style", "padding:0;vertical-align:top;" ]
+                        [ stacked rightKids ] ] ]
 
     | NodeKind.SummaryList spec ->
         let kids = children opts depth ctx spec.Children
@@ -652,9 +642,10 @@ and private renderKind
         let headingEls =
             match spec.Heading with
             | Some heading ->
-                [ Html.p
-                      [ prop.custom ("style", textStyle opts "font-size:15px;line-height:20px;font-weight:600;")
-                        prop.text (text heading) ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textStyle opts "font-size:15px;line-height:20px;font-weight:600;" ]
+                      (text heading) ]
             | None -> []
 
         stacked (headingEls @ kids)
@@ -665,9 +656,10 @@ and private renderKind
         let kids = children opts depth ctx spec.Children
 
         stacked (
-            [ Html.p
-                  [ prop.custom ("style", textStyle opts "font-size:15px;line-height:20px;font-weight:600;")
-                    prop.text (text spec.Heading) ] ]
+            [ Markup.textElement
+                  "p"
+                  [ "style", textStyle opts "font-size:15px;line-height:20px;font-weight:600;" ]
+                  (text spec.Heading) ]
             @ kids
         )
 
@@ -684,43 +676,43 @@ and private renderKind
         match Map.tryFind spec.Name ctx.Fragments with
         | Some body -> renderNode opts (depth + 1) ctx body
         | None ->
-            Html.p
-                [ prop.custom ("style", textIn opts mutedColour "font-size:13px;")
-                  prop.text ("[fuaran:fragment unresolved '" + spec.Name + "']") ]
+            Markup.textElement
+                "p"
+                [ "style", textIn opts mutedColour "font-size:13px;" ]
+                ("[fuaran:fragment unresolved '" + spec.Name + "']")
 
     | NodeKind.FragmentDecl _ -> omitted
 
     // ── Display ──────────────────────────────────────────────────────────────
     | NodeKind.Heading spec ->
-        let props =
-            [ prop.custom ("style", headingStyle opts spec.Level spec.Variant)
-              prop.text (text spec.Text) ]
+        let tag =
+            match spec.Level with
+            | 1 -> "h1"
+            | 2 -> "h2"
+            | 3 -> "h3"
+            | 4 -> "h4"
+            | 5 -> "h5"
+            | _ -> "h6"
 
-        match spec.Level with
-        | 1 -> Html.h1 props
-        | 2 -> Html.h2 props
-        | 3 -> Html.h3 props
-        | 4 -> Html.h4 props
-        | 5 -> Html.h5 props
-        | _ -> Html.h6 props
+        Markup.textElement tag [ "style", headingStyle opts spec.Level spec.Variant ] (text spec.Text)
 
     | NodeKind.Markdown spec ->
         layoutTable
             ""
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.dangerouslySetInnerHTML (
-                              emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)
-                          ) ] ] ]
+            [ row
+                  [ Markup.rawElement
+                        "td"
+                        [ "style", textStyle opts "font-size:15px;line-height:22px;" ]
+                        (emailSafeMarkdown ctx.Policy.Egress spec.Citations (text spec.Text)) ] ]
     // Phase 2536 — the Markdown cell's typography, with the words escaped rather than parsed.
     | NodeKind.Text spec ->
         layoutTable
             ""
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;")
-                          prop.text (text spec.Text) ] ] ]
+            [ row
+                  [ Markup.textElement
+                        "td"
+                        [ "style", textStyle opts "font-size:15px;line-height:22px;" ]
+                        (text spec.Text) ] ]
 
     | NodeKind.Metric spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
@@ -737,11 +729,10 @@ and private renderKind
             | Some trendBinding ->
                 match BindingResolver.tryResolveScalarFloat ctx.Sources trendBinding with
                 | Some t ->
-                    [ Html.p
-                          [ prop.custom ("style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;")
-                            prop.text (
-                                Render.formatNumber ctx (spec.TrendFormat |> Option.defaultValue CellFormat.None) t
-                            ) ] ]
+                    [ Markup.textElement
+                          "p"
+                          [ "style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;" ]
+                          (Render.formatNumber ctx (spec.TrendFormat |> Option.defaultValue CellFormat.None) t) ]
                 | None -> []
             | None -> []
 
@@ -752,78 +743,77 @@ and private renderKind
             |> List.choose (fun c ->
                 BindingResolver.tryResolveScalarFloat ctx.Sources c.Value
                 |> Option.map (fun v ->
-                    Html.p
-                        [ prop.custom ("style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;")
-                          prop.text (Render.formatNumber ctx c.Format v + " " + text c.Label) ]))
+                    Markup.textElement
+                        "p"
+                        [ "style", textIn opts (toneColour spec.Tone) "font-size:13px;line-height:18px;" ]
+                        (Render.formatNumber ctx c.Format v + " " + text c.Label)))
 
         let subtextEls =
             match spec.Subtext with
             | Some subtext ->
-                [ Html.p
-                      [ prop.custom ("style", textIn opts mutedColour "font-size:13px;line-height:18px;")
-                        prop.text (text subtext) ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textIn opts mutedColour "font-size:13px;line-height:18px;" ]
+                      (text subtext) ]
             | None -> []
 
         layoutTable
             ("border:1px solid " + ruleColour + ";background:" + panelColour + ";")
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("style", "padding:14px 16px;")
-                          prop.children (
-                              [ Html.p
-                                    [ prop.custom (
-                                          "style",
-                                          textIn
-                                              opts
-                                              mutedColour
-                                              "font-size:12px;line-height:16px;letter-spacing:0.06em;text-transform:uppercase;"
-                                      )
-                                      prop.text (text spec.Label) ]
-                                Html.p
-                                    [ prop.custom (
-                                          "style",
-                                          textIn
-                                              opts
-                                              (toneColour spec.Tone)
-                                              "font-size:28px;line-height:34px;font-weight:700;padding-top:4px;"
-                                      )
-                                      prop.text valueText ] ]
-                              @ trendEls
-                              @ comparisonEls
-                              @ subtextEls
-                          ) ] ] ]
+            [ row
+                  [ Markup.element
+                        "td"
+                        [ "style", "padding:14px 16px;" ]
+                        ([ Markup.textElement
+                               "p"
+                               [ "style",
+                                 textIn
+                                     opts
+                                     mutedColour
+                                     "font-size:12px;line-height:16px;letter-spacing:0.06em;text-transform:uppercase;" ]
+                               (text spec.Label)
+                           Markup.textElement
+                               "p"
+                               [ "style",
+                                 textIn
+                                     opts
+                                     (toneColour spec.Tone)
+                                     "font-size:28px;line-height:34px;font-weight:700;padding-top:4px;" ]
+                               valueText ]
+                         @ trendEls
+                         @ comparisonEls
+                         @ subtextEls) ] ]
 
     | NodeKind.Fact spec ->
         let helpEls =
             match spec.Help with
             | Some help ->
-                [ Html.p
-                      [ prop.custom ("style", textIn opts mutedColour "font-size:12px;line-height:16px;")
-                        prop.text (text help) ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textIn opts mutedColour "font-size:12px;line-height:16px;" ]
+                      (text help) ]
             | None -> []
 
         let weight = if spec.Emphasis then "700" else "600"
 
         layoutTable
             ""
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("style", "padding:0;")
-                          prop.children (
-                              [ Html.p
-                                    [ prop.custom ("style", textIn opts mutedColour "font-size:12px;line-height:16px;")
-                                      prop.text (text spec.Label) ]
-                                Html.p
-                                    [ prop.custom (
-                                          "style",
-                                          textIn
-                                              opts
-                                              (toneColour spec.Tone)
-                                              ("font-size:16px;line-height:22px;font-weight:" + weight + ";")
-                                      )
-                                      prop.text (text spec.Value) ] ]
-                              @ helpEls
-                          ) ] ] ]
+            [ row
+                  [ Markup.element
+                        "td"
+                        [ "style", "padding:0;" ]
+                        ([ Markup.textElement
+                               "p"
+                               [ "style", textIn opts mutedColour "font-size:12px;line-height:16px;" ]
+                               (text spec.Label)
+                           Markup.textElement
+                               "p"
+                               [ "style",
+                                 textIn
+                                     opts
+                                     (toneColour spec.Tone)
+                                     ("font-size:16px;line-height:22px;font-weight:" + weight + ";") ]
+                               (text spec.Value) ]
+                         @ helpEls) ] ]
 
     | NodeKind.LabelValueRow spec ->
         let resolution = BindingResolver.resolveScalarFloat ctx.Sources spec.Value
@@ -839,41 +829,38 @@ and private renderKind
 
         layoutTable
             ""
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom (
-                              "style",
-                              "padding:6px 0;border-bottom:1px solid "
-                              + ruleColour
-                              + ";"
-                              + textStyle opts "font-size:14px;line-height:20px;"
-                          )
-                          prop.text (text spec.Label) ]
-                    Html.td
-                        [ prop.custom ("align", "right")
-                          prop.custom (
-                              "style",
-                              "padding:6px 0;text-align:right;border-bottom:1px solid "
-                              + ruleColour
-                              + ";"
-                              + textStyle opts ("font-size:14px;line-height:20px;font-weight:" + weight + ";")
-                          )
-                          prop.text valueText ] ] ]
+            [ row
+                  [ Markup.textElement
+                        "td"
+                        [ "style",
+                          "padding:6px 0;border-bottom:1px solid "
+                          + ruleColour
+                          + ";"
+                          + textStyle opts "font-size:14px;line-height:20px;" ]
+                        (text spec.Label)
+                    Markup.textElement
+                        "td"
+                        [ "align", "right"
+                          "style",
+                          "padding:6px 0;text-align:right;border-bottom:1px solid "
+                          + ruleColour
+                          + ";"
+                          + textStyle opts ("font-size:14px;line-height:20px;font-weight:" + weight + ";") ]
+                        valueText ] ]
 
     | NodeKind.Badge spec ->
         let colour = badgeColour spec.Variant
 
-        Html.span
-            [ prop.custom (
-                  "style",
-                  textIn
-                      opts
-                      colour
-                      ("display:inline-block;padding:2px 8px;border:1px solid "
-                       + colour
-                       + ";font-size:12px;line-height:18px;")
-              )
-              prop.text (text spec.Label) ]
+        Markup.textElement
+            "span"
+            [ "style",
+              textIn
+                  opts
+                  colour
+                  ("display:inline-block;padding:2px 8px;border:1px solid "
+                   + colour
+                   + ";font-size:12px;line-height:18px;") ]
+            (text spec.Label)
 
     | NodeKind.Callout spec ->
         let colour = toneColour spec.Tone
@@ -881,9 +868,10 @@ and private renderKind
         let headingEls =
             match spec.Heading with
             | Some heading ->
-                [ Html.p
-                      [ prop.custom ("style", textIn opts colour "font-size:15px;line-height:20px;font-weight:600;")
-                        prop.text (text heading) ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textIn opts colour "font-size:15px;line-height:20px;font-weight:600;" ]
+                      (text heading) ]
             | None -> []
 
         layoutTable
@@ -894,32 +882,27 @@ and private renderKind
              + ";background:"
              + panelColour
              + ";")
-            [ Html.tr
-                  [ Html.td
-                        [ prop.custom ("style", "padding:12px 16px;")
-                          prop.children (
-                              headingEls
-                              @ [ Html.p
-                                      [ prop.custom (
-                                            "style",
-                                            textStyle opts "font-size:14px;line-height:20px;padding-top:2px;"
-                                        )
-                                        prop.text (text spec.Body) ] ]
-                          ) ] ] ]
+            [ row
+                  [ Markup.element
+                        "td"
+                        [ "style", "padding:12px 16px;" ]
+                        (headingEls
+                         @ [ Markup.textElement
+                                 "p"
+                                 [ "style", textStyle opts "font-size:14px;line-height:20px;padding-top:2px;" ]
+                                 (text spec.Body) ]) ] ]
 
     | NodeKind.List spec ->
         let items =
             [ for item in spec.Items ->
-                  Html.li
-                      [ prop.custom ("style", textStyle opts "font-size:15px;line-height:22px;padding-bottom:4px;")
-                        prop.text (text item) ] ]
+                  Markup.textElement
+                      "li"
+                      [ "style", textStyle opts "font-size:15px;line-height:22px;padding-bottom:4px;" ]
+                      (text item) ]
 
         let listStyle = "margin:0;padding:0 0 0 22px;"
 
-        if spec.Ordered then
-            Html.ol [ prop.custom ("style", listStyle); prop.children items ]
-        else
-            Html.ul [ prop.custom ("style", listStyle); prop.children items ]
+        Markup.element (if spec.Ordered then "ol" else "ul") [ "style", listStyle ] items
 
     | NodeKind.Link spec ->
         // The one genuine interaction an email has, and it passes the same gate
@@ -943,10 +926,11 @@ and private renderKind
         // reader, and several clients rewrite anchors on delivery. The
         // projection therefore emits the ordinary anchor and keeps the
         // sanitisation, rather than shipping an entity blob a client may mangle.
-        Html.a
-            [ prop.custom ("style", textIn opts linkColour "font-size:15px;line-height:22px;text-decoration:underline;")
-              prop.href safeHref
-              prop.children [ Html.text (text spec.Label) ] ]
+        Markup.textElement
+            "a"
+            [ "style", textIn opts linkColour "font-size:15px;line-height:22px;text-decoration:underline;"
+              "href", safeHref ]
+            (text spec.Label)
 
     | NodeKind.Image spec ->
         let resolvedSrc =
@@ -958,11 +942,12 @@ and private renderKind
         let safeSrc, _ =
             Sanitize.sanitizeUrlForEgress ctx.Policy.Egress Sanitize.EgressClass.Media resolvedSrc
 
-        Html.img
-            [ prop.src safeSrc
-              prop.alt (text spec.Alt)
-              prop.custom ("border", "0")
-              prop.custom ("style", "display:block;max-width:100%;height:auto;border:0;outline:none;") ]
+        Markup.voidElement
+            "img"
+            [ "src", safeSrc
+              "alt", text spec.Alt
+              "border", "0"
+              "style", "display:block;max-width:100%;height:auto;border:0;outline:none;" ]
 
     | NodeKind.Progress spec ->
         let fraction =
@@ -976,71 +961,68 @@ and private renderKind
         let labelEls =
             match spec.Label with
             | Some label ->
-                [ Html.p
-                      [ prop.custom ("style", textStyle opts "font-size:13px;line-height:18px;padding-bottom:4px;")
-                        prop.text (text label + " — " + string pct + "%") ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textStyle opts "font-size:13px;line-height:18px;padding-bottom:4px;" ]
+                      (text label + " — " + string pct + "%") ]
             | None ->
-                [ Html.p
-                      [ prop.custom ("style", textStyle opts "font-size:13px;line-height:18px;padding-bottom:4px;")
-                        prop.text (string pct + "%") ] ]
+                [ Markup.textElement
+                      "p"
+                      [ "style", textStyle opts "font-size:13px;line-height:18px;padding-bottom:4px;" ]
+                      (string pct + "%") ]
 
         // The percentage rides as TEXT as well as bar geometry: a client that
         // strips background colours then still conveys the figure.
         let bar =
             layoutTable
                 ("border:1px solid " + ruleColour + ";")
-                [ Html.tr
+                [ row
                       [ if pct > 0 then
-                            Html.td
-                                [ prop.custom ("width", string pct + "%")
-                                  prop.custom (
-                                      "style",
-                                      "width:"
-                                      + string pct
-                                      + "%;background:"
-                                      + colour
-                                      + ";font-size:0;line-height:0;height:8px;"
-                                  )
-                                  prop.children [ Html.text " " ] ]
+                            Markup.element
+                                "td"
+                                [ "width", string pct + "%"
+                                  "style",
+                                  "width:"
+                                  + string pct
+                                  + "%;background:"
+                                  + colour
+                                  + ";font-size:0;line-height:0;height:8px;" ]
+                                [ Markup.text " " ]
                         if pct < 100 then
-                            Html.td
-                                [ prop.custom ("width", string (100 - pct) + "%")
-                                  prop.custom (
-                                      "style",
-                                      "width:"
-                                      + string (100 - pct)
-                                      + "%;background:"
-                                      + panelColour
-                                      + ";font-size:0;line-height:0;height:8px;"
-                                  )
-                                  prop.children [ Html.text " " ] ] ] ]
+                            Markup.element
+                                "td"
+                                [ "width", string (100 - pct) + "%"
+                                  "style",
+                                  "width:"
+                                  + string (100 - pct)
+                                  + "%;background:"
+                                  + panelColour
+                                  + ";font-size:0;line-height:0;height:8px;" ]
+                                [ Markup.text " " ] ] ]
 
         stacked (labelEls @ [ bar ])
 
     | NodeKind.CodeBlock spec ->
-        Html.pre
-            [ prop.custom (
-                  "style",
-                  "margin:0;padding:12px;background:"
-                  + panelColour
-                  + ";border:1px solid "
-                  + ruleColour
-                  + ";font-family:Consolas, Courier New, monospace;font-size:13px;line-height:18px;color:"
-                  + inkColour
-                  + ";white-space:pre-wrap;"
-              )
-              prop.children [ Html.code [ prop.text spec.Code ] ] ]
+        Markup.element
+            "pre"
+            [ "style",
+              "margin:0;padding:12px;background:"
+              + panelColour
+              + ";border:1px solid "
+              + ruleColour
+              + ";font-family:Consolas, Courier New, monospace;font-size:13px;line-height:18px;color:"
+              + inkColour
+              + ";white-space:pre-wrap;" ]
+            [ Markup.textElement "code" [] spec.Code ]
 
     | NodeKind.Math spec ->
         // The declared narrowing: readable LaTeX rather than MathML no Word-
         // engine client will draw. `docs/SSR.md` records it as a scope decision.
-        Html.span
-            [ prop.custom (
-                  "style",
-                  textStyle opts "font-family:Consolas, Courier New, monospace;font-size:14px;line-height:20px;"
-              )
-              prop.custom ("data-fuaran-math-src", spec.Source)
-              prop.text spec.Source ]
+        Markup.textElement
+            "span"
+            [ "style", textStyle opts "font-family:Consolas, Courier New, monospace;font-size:14px;line-height:20px;"
+              "data-fuaran-math-src", spec.Source ]
+            spec.Source
 
     | NodeKind.Toast spec ->
         let isOpen =
@@ -1056,55 +1038,55 @@ and private renderKind
 
             layoutTable
                 ("border:1px solid " + colour + ";background:" + panelColour + ";")
-                [ Html.tr
-                      [ Html.td
-                            [ prop.custom ("style", "padding:10px 14px;")
-                              prop.children
-                                  [ Html.p
-                                        [ prop.custom ("style", textIn opts colour "font-size:14px;line-height:20px;")
-                                          prop.text (text spec.Message) ] ] ] ] ]
+                [ row
+                      [ Markup.element
+                            "td"
+                            [ "style", "padding:10px 14px;" ]
+                            [ Markup.textElement
+                                  "p"
+                                  [ "style", textIn opts colour "font-size:14px;line-height:20px;" ]
+                                  (text spec.Message) ] ] ]
 
     | NodeKind.DataGrid spec ->
         match spec.StaticRows with
         | Some sr ->
             let headerCells =
                 [ for h in sr.Headers ->
-                      Html.th
-                          [ prop.custom ("align", "left")
-                            prop.custom (
-                                "style",
-                                "padding:8px 10px;text-align:left;border:1px solid "
-                                + ruleColour
-                                + ";background:"
-                                + panelColour
-                                + ";"
-                                + textStyle opts "font-size:13px;line-height:18px;font-weight:600;"
-                            )
-                            prop.text (text h) ] ]
+                      Markup.textElement
+                          "th"
+                          [ "align", "left"
+                            "style",
+                            "padding:8px 10px;text-align:left;border:1px solid "
+                            + ruleColour
+                            + ";background:"
+                            + panelColour
+                            + ";"
+                            + textStyle opts "font-size:13px;line-height:18px;font-weight:600;" ]
+                          (text h) ]
 
             let bodyRows =
-                [ for i, row in List.indexed sr.Rows ->
-                      Html.tr
-                          [ for j, cell in List.indexed row ->
-                                Html.td
-                                    [ prop.custom (
-                                          "style",
-                                          "padding:8px 10px;border:1px solid "
-                                          + ruleColour
-                                          + ";"
-                                          + textStyle opts "font-size:13px;line-height:18px;"
-                                      )
+                [ for i, cells in List.indexed sr.Rows ->
+                      row
+                          [ for j, cell in List.indexed cells ->
+                                Markup.textElement
+                                    "td"
+                                    [ "style",
+                                      "padding:8px 10px;border:1px solid "
+                                      + ruleColour
+                                      + ";"
+                                      + textStyle opts "font-size:13px;line-height:18px;"
                                       // Phase 2592 — a mail client has no reference stylesheet, so a
                                       // hidden label would be printed in the cell. The reference stays.
                                       match sr.Citations |> List.tryFind (fun c -> c.Row = i && c.Column = j) with
-                                      | Some citation -> prop.custom ("data-fact", citation.Reference)
-                                      | None -> ()
-                                      prop.text (text cell) ] ] ]
+                                      | Some citation -> "data-fact", citation.Reference
+                                      | None -> () ]
+                                    (text cell) ] ]
 
-            Html.table (
-                tableProps ""
-                @ [ prop.children [ Html.thead [ Html.tr headerCells ]; Html.tbody bodyRows ] ]
-            )
+            Markup.element
+                "table"
+                (tableAttrs "")
+                [ Markup.element "thead" [] [ row headerCells ]
+                  Markup.element "tbody" [] bodyRows ]
         | None ->
             // A client-library grid has no rows server-side to lay out. Link.
             live "Table"
@@ -1262,36 +1244,25 @@ let renderWith (opts: EmailOptions) (sources: BindingResolver.BindingSources) (n
     let body = renderNode opts 1 ctx node
 
     let column =
-        Html.table (
-            [ prop.custom ("role", "presentation")
-              prop.custom ("cellpadding", "0")
-              prop.custom ("cellspacing", "0")
-              prop.custom ("border", "0")
-              prop.custom ("width", string opts.MaxWidthPx)
-              prop.custom (
-                  "style",
-                  "border-collapse:collapse;width:100%;max-width:"
-                  + string opts.MaxWidthPx
-                  + "px;margin:0 auto;background:#ffffff;"
-              ) ]
-            @ [ prop.children
-                    [ Html.tbody
-                          [ Html.tr [ Html.td [ prop.custom ("style", "padding:24px;"); prop.children [ body ] ] ] ] ] ]
-        )
+        Markup.element
+            "table"
+            [ "role", "presentation"
+              "cellpadding", "0"
+              "cellspacing", "0"
+              "border", "0"
+              "width", string opts.MaxWidthPx
+              "style",
+              "border-collapse:collapse;width:100%;max-width:"
+              + string opts.MaxWidthPx
+              + "px;margin:0 auto;background:#ffffff;" ]
+            [ Markup.element "tbody" [] [ row [ Markup.element "td" [ "style", "padding:24px;" ] [ body ] ] ] ]
 
     // The outer 100%-width table is the conventional centring wrapper: margin
     // auto alone does not centre in Outlook, and `align="center"` does.
-    Render.htmlView (
-        Html.table (
-            tableProps ("background:" + panelColour + ";")
-            @ [ prop.children
-                    [ Html.tbody
-                          [ Html.tr
-                                [ Html.td
-                                      [ prop.custom ("align", "center")
-                                        prop.custom ("style", "padding:16px;text-align:center;")
-                                        prop.children [ column ] ] ] ] ] ]
-        )
+    Markup.toHtml (
+        layoutTable
+            ("background:" + panelColour + ";")
+            [ row [ Markup.element "td" [ "align", "center"; "style", "padding:16px;text-align:center;" ] [ column ] ] ]
     )
 
 /// Render with the conventional defaults (no live surface declared).
@@ -1333,7 +1304,7 @@ let renderDocument
             ""
         else
             " lang=\""
-            + Render.htmlView (Html.text sources.Locale)
+            + Markup.escape sources.Locale
             + "\" dir=\""
             + Formatting.textDirection sources.Locale
             + "\""
@@ -1345,7 +1316,7 @@ let renderDocument
         + "<meta charset=\"utf-8\" />\n"
         + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
         + "<title>"
-        + Render.htmlView (Html.text subject)
+        + Markup.escape subject
         + "</title>\n</head>\n<body style=\"margin:0;padding:0;background:"
         + panelColour
         + ";\">\n"

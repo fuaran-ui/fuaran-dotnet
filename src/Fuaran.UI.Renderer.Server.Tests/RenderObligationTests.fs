@@ -44,7 +44,6 @@ open Expecto
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
-open Feliz.ViewEngine
 open Fuaran.UI.Renderer.Server
 open Fuaran.UI.RenderFidelity
 
@@ -627,7 +626,7 @@ let private checkUnregisteredCustomLabelled () =
             cards
             (Registry.empty
              |> Registry.register "analytics" "sparkline" (fun _ ->
-                 Html.div [ prop.className "host-sparkline"; prop.text "rendered" ]))
+                 Markup.textElement "div" [ "class", "host-sparkline" ] "rendered"))
             BindingResolver.empty
             (customNode None)
 
