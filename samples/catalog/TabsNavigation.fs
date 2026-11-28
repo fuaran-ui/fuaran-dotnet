@@ -32,6 +32,7 @@ open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ let private tabsNode (model: Model) : Node<Msg> =
 
 let private wireRuntime () : Runtime.IFuaranRuntime =
     let runtime = Runtime.MutableRuntime()
-    runtime.RegisterCustomRenderer("tabs-69", "DetailPane", detailPaneRenderer)
+    runtime.RegisterReactRenderer("tabs-69", "DetailPane", detailPaneRenderer)
     runtime :> Runtime.IFuaranRuntime
 
 // ─── View ──────────────────────────────────────────────────────────────────
@@ -161,7 +162,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "tabs-69-page"
                 prop.style [ style.padding 24 ]

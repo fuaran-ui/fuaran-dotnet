@@ -28,6 +28,7 @@ open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model (state lives in the StateStore, not here) ────────────────────────
 
@@ -127,7 +128,7 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
         SampleContext.render (BrowserRuntime.create ()) BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "interactive-disabled-130-page"
                 prop.className "catalog-interactive-disabled"
@@ -141,4 +142,6 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
                       Html.section
                           [ prop.testId "interactive-disabled-readers"
                             prop.style [ style.marginTop 24; style.maxWidth 480 ]
-                            prop.children [ Render.renderStateReactive BindingResolver.empty dispatch readerPane ] ] ] ] ]
+                            prop.children
+                                [ Render.renderStateReactive BindingResolver.empty dispatch readerPane
+                                  |> Rendered.toReact ] ] ] ] ]

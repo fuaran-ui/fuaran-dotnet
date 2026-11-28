@@ -22,12 +22,11 @@ module Fuaran.UI.Tests.CustomRenderer
 //  rejects non-data-* / non-aria-* keys; tests assert the rejection +
 //  retention paths.
 //
-//  Feliz' .NET-side ReactElement is opaque, so DOM-shape assertions stay
+//  The client renderer's .NET-side RenderedElement is opaque, so DOM-shape assertions stay
 //  out of scope (same constraint as AccessibilityTests / ToneClassEmissionTests).
 // ============================================================================
 
 open Expecto
-open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.PreEmitValidate
@@ -36,15 +35,14 @@ open Fuaran.UI.Renderer.Runtime
 
 type Msg = NoOp
 
-// Feliz's `.NET-side build of `Html.div [ ... ]` invokes
-// `HtmlHelper.createElement` which casts the property list to
-// `FSharpList<IReactProperty>` — and `prop.className` returns a value
+// On .NET the renderer's React binding builds `Html.div [ ... ]` from a
+// property list of `IReactProperty` — and `prop.className` returns a value
 // whose cast to that target type fails outside the Fable pipeline
 // (`InvalidCastException`). The tests below only need a sentinel
-// `ReactElement` to pin the Some/None contract of `TryRenderCustom`, so
-// `Unchecked.defaultof<ReactElement>` is the safe stand-in (a `null`
+// `RenderedElement` to pin the Some/None contract of `TryRenderCustom`, so
+// `Unchecked.defaultof<RenderedElement>` is the safe stand-in (a `null`
 // reference on .NET; never inspected by the test assertions).
-let private stubElement: ReactElement = Unchecked.defaultof<ReactElement>
+let private stubElement: RenderedElement = Unchecked.defaultof<RenderedElement>
 
 [<Tests>]
 let tests =

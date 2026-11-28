@@ -8,7 +8,7 @@ module FableRender.Dom
 
 #if FABLE_COMPILER
 open Fable.Core
-open Feliz
+open Fuaran.UI.Renderer
 
 [<Import("createRoot", "react-dom/client")>]
 let createRoot (container: obj) : obj = jsNative
@@ -17,7 +17,7 @@ let createRoot (container: obj) : obj = jsNative
 let flushSync (work: unit -> unit) : unit = jsNative
 
 [<Emit("$0.render($1)")>]
-let rootRender (root: obj) (element: ReactElement) : unit = jsNative
+let rootRender (root: obj) (element: RenderedElement) : unit = jsNative
 
 [<Emit("$0.unmount()")>]
 let rootUnmount (root: obj) : unit = jsNative

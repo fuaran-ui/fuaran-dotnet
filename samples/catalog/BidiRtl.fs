@@ -37,6 +37,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 /// Each sample tree renders under the context built for it.
 let private renderSample (node: Node<unit>) : ReactElement =
@@ -111,7 +112,7 @@ let private textRun (regionLabel: string) : ReactElement =
 
 let view () : ReactElement =
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "bidi-rtl-page"
                 prop.className "bidi-rtl-page"

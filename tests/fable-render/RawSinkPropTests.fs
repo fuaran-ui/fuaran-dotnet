@@ -22,7 +22,6 @@ module FableRender.RawSinkPropTests
 
 #if FABLE_COMPILER
 open Fable.Core
-open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -39,7 +38,7 @@ open FableRender.Expecto
   };
   return walk($0);
 })()""")>]
-let private sinkPropOf (root: ReactElement) : obj = jsNative
+let private sinkPropOf (root: RenderedElement) : obj = jsNative
 
 [<Emit("(() => { const o = new MutationObserver(() => {}); o.observe($0, { childList: true, subtree: true, characterData: true, attributes: true }); return o; })()")>]
 let private observe (container: obj) : obj = jsNative
@@ -69,7 +68,7 @@ let private surface (title: string) (body: string) : Node<obj> =
                           Text = TextSource.Literal title }
                   markdown "sink-body" body ] }
 
-let private renderFresh (node: Node<obj>) : ReactElement =
+let private renderFresh (node: Node<obj>) : RenderedElement =
     Render.render (Render.RenderContext.create BindingResolver.empty ignore node) node
 
 /// Mount `first`, re-render with `second`, and return the mutation tally of the

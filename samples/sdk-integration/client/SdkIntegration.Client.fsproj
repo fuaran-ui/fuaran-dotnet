@@ -26,6 +26,8 @@
     <ProjectReference Include="..\..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
     <ProjectReference Include="..\..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- Phase 2514: the renderer returns RenderedElement; this Feliz host converts at the edge. -->
+    <ProjectReference Include="..\..\..\src\Fuaran.UI.Renderer.Feliz\Fuaran.UI.Renderer.Feliz.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Fable.Core" />

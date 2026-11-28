@@ -8,7 +8,7 @@
          compile Browser.Types-flavoured code. -->
     <DefineConstants Condition="'$(Configuration)' != 'Release'">FABLE_COMPILER;DEBUG</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Release'">FABLE_COMPILER</DefineConstants>
-    <!-- Feliz / Fable.Elmish pre-date the F# 10 nullness checker, and under
+    <!-- The Fable bindings pre-date the F# 10 nullness checker, and under
          Fable it is the ENTRY project's properties that govern the whole source
          graph — including the sources this project consumes from packages. The
          libraries themselves keep nullness on. -->
@@ -31,7 +31,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Fable.Core" />
-    <PackageReference Include="Feliz" />
     <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.Ops\Fuaran.UI.Ops.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />

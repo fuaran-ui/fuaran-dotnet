@@ -600,6 +600,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
     DebugGlobal.register debugOptIn tree sources fuaranRuntime None
 
     Render.render ctx tree
+    // The renderer returns the opaque RenderedElement, which is a React element at
+    // runtime; the MVU view takes Fable.React's, so the edge is an identity cast.
+    |> unbox<Fable.React.ReactElement>
 
 // ─── Boot ─────────────────────────────────────────────────────────────────
 

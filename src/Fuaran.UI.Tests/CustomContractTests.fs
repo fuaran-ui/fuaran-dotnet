@@ -13,14 +13,13 @@ module Fuaran.UI.Tests.CustomContract
 //
 //  The client `RegisterContract` Ok path is pinned via the registry contract
 //  (registration + recorded hash + Some-on-valid-payload). The decode-FAILURE
-//  placeholder is rendered through `Html.div`, whose .NET-side ReactElement cast
+//  placeholder is rendered through `Html.div`, whose .NET-side RenderedElement cast
 //  throws (same constraint as CustomRendererTests / AccessibilityTests), so the
 //  rendered placeholder is asserted on the SERVER pipeline instead, where the
 //  output is a real HTML string (CustomContractServerTests).
 // ============================================================================
 
 open Expecto
-open Feliz
 open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
@@ -213,10 +212,10 @@ let tests =
               | Ok p -> failtestf "expected Error, got Ok %A" p
           }
 
-          // ── Client dual-registration (Ok path; .NET ReactElement is opaque) ──
+          // ── Client dual-registration (Ok path; .NET RenderedElement is opaque) ──
           test "client RegisterContract records the derived hash + serves the Ok path" {
               let registry = CustomRendererRegistry()
-              let sentinel: ReactElement = Unchecked.defaultof<ReactElement>
+              let sentinel: RenderedElement = Unchecked.defaultof<RenderedElement>
               registry.RegisterContract(contract, (fun (_p: Spark) -> sentinel))
 
               match registry.TryGet(contract.ModuleId, contract.ComponentId) with

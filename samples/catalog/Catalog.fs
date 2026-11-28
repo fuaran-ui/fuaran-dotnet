@@ -31,6 +31,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Theme catalogue (selectable in the top-bar drop-down) ────────────────
 
@@ -476,7 +477,7 @@ let private mainPane (model: Model) (_dispatch: Msg -> unit) : ReactElement =
 
 let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     React.Fragment
-        [ Render.themeStyleElement model.ActiveTheme.Theme
+        [ Render.themeStyleElement model.ActiveTheme.Theme |> Rendered.toReact
           Html.div
               [ prop.className "catalog-shell"
                 prop.children

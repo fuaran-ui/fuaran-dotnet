@@ -13,6 +13,7 @@ module Fuaran.Samples.Catalog.SampleContext
 
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 /// The context for rendering `node` in the catalog: `RenderContext.create`'s
 /// defaults (no sink, no recording, no uploads, `Permissive` CSP, the root
@@ -39,4 +40,4 @@ let render
     (dispatch: 'Msg -> unit)
     (node: Node<'Msg>)
     : Feliz.ReactElement =
-    Render.render (forTree runtime sources dispatch node) node
+    Render.render (forTree runtime sources dispatch node) node |> Rendered.toReact

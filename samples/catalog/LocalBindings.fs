@@ -32,6 +32,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
@@ -214,7 +215,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let render = SampleContext.render Runtime.diagnostic BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "local-bindings-page"
                 prop.className "catalog-local-bindings"

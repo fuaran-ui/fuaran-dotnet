@@ -10,7 +10,7 @@ module Fuaran.UI.Tests.RendererAgreement
 //  `Fuaran.UI.Renderer.Core` — so a renderer that drifts from it fails its own
 //  half, and the two cannot disagree while both pass.
 //
-//  Feliz's .NET-side `ReactElement` is opaque (the constraint ErrorBoundaryTests
+//  The client renderer's .NET-side `RenderedElement` is opaque (the constraint ErrorBoundaryTests
 //  and RenderEntrySeamTests document): building an element throws here, so the
 //  emitted DOM cannot be read. What the client renderer does BEFORE that point
 //  is observable, and every assertion below is against it — the node ids its
@@ -31,7 +31,6 @@ module Fuaran.UI.Tests.RendererAgreement
 
 open System.Collections.Generic
 open Expecto
-open Feliz
 open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -75,7 +74,7 @@ let private recordingRuntime (warnings: ResizeArray<string>) (inner: MutableRunt
         member _.TryLoadGuest(s) = r.TryLoadGuest(s) }
 
 /// A sentinel element; never inspected (see CustomRendererTests).
-let private stubElement: ReactElement = Unchecked.defaultof<ReactElement>
+let private stubElement: RenderedElement = Unchecked.defaultof<RenderedElement>
 
 type private Harness =
     { Warnings: ResizeArray<string>
@@ -104,7 +103,7 @@ let private harness () : Harness =
       Runtime = runtime
       Calls = calls }
 
-/// Render through the client renderer, tolerating the .NET Feliz shim's throw:
+/// Render through the client renderer, tolerating the renderer's .NET element shim's throw:
 /// every seam asserted on is reached before it.
 let private renderWith (h: Harness) (sources: BindingResolver.BindingSources) (node: Node<obj>) : unit =
     try
@@ -438,7 +437,7 @@ let tests =
                 test "a tree exactly at MaxDepth renders in full, and a failed walk leaves no depth behind" {
                     onBigStack (fun () ->
                         let h = harness ()
-                        // A walk that throws out of the renderer (the .NET Feliz shim
+                        // A walk that throws out of the renderer (the renderer's .NET element shim
                         // does, every time) must restore the depth counter, or the
                         // next render on this thread starts deeper than its root.
                         for _ in 1..3 do

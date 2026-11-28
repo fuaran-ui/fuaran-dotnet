@@ -25,7 +25,6 @@ module Fuaran.UI.Tests.CustomIsolation
 // ============================================================================
 
 open Expecto
-open Feliz
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -33,15 +32,15 @@ open Fuaran.UI.Renderer.Runtime
 
 /// A registered renderer that RECORDS its invocation and returns a null element.
 ///
-/// It deliberately does not build a real `ReactElement`: Feliz's .NET shim
-/// cannot construct one (`prop.text` is a tuple it cannot cast to
+/// It deliberately does not build a real `RenderedElement`: the renderer's React
+/// binding cannot construct one on .NET (`prop.text` is a tuple it cannot cast to
 /// `IReactProperty`), and a lookup that throws while building its result is
 /// indistinguishable from one that found nothing — which would make every
 /// "not reachable" assertion below pass for the wrong reason.
-let private recordingRenderer (log: ResizeArray<string>) (label: string) : Map<string, JVal> -> ReactElement =
+let private recordingRenderer (log: ResizeArray<string>) (label: string) : Map<string, JVal> -> RenderedElement =
     fun _ ->
         log.Add label
-        Unchecked.defaultof<ReactElement>
+        Unchecked.defaultof<RenderedElement>
 
 let private hash (h: string) (strictness: HashStrictness) : ContentHash =
     { Algorithm = "sha256"

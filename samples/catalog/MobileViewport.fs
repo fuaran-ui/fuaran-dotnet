@@ -23,6 +23,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // The layout primitives the responsive rules collapse / scroll, in the order
 // they read best stacked vertically. Each id resolves against `Matrix.entries`;
@@ -60,7 +61,7 @@ let view () : ReactElement =
         |> List.map sample
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "viewport-mobile-page"
                 prop.className "viewport-mobile-page"

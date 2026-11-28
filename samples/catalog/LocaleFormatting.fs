@@ -20,6 +20,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 type Model = unit
 type Msg = NoOp
@@ -136,7 +137,7 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
             dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "formatting-102-page"
                 prop.className "catalog-formatting"

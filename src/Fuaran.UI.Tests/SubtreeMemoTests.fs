@@ -4,7 +4,7 @@ module Fuaran.UI.Tests.SubtreeMemo
 //  Phase 2547 — the subtree memo. `render` returns the element it built last
 //  time for a node it has already rendered under the same context and store
 //  write generation, when the context opts in. The client renderer's elements
-//  are Feliz's and do not build on .NET, so this suite pins the three keys on
+//  are React elements and do not build on .NET, so this suite pins the three keys on
 //  the memo's own value-level pieces — the decision (`SubtreeMemo.hit`), the
 //  table (`tryGet` / `set`, keyed by node identity), the generation every
 //  store write advances — and the default (`create` leaves it off). The
@@ -16,7 +16,6 @@ module Fuaran.UI.Tests.SubtreeMemo
 // ============================================================================
 
 open Expecto
-open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -34,8 +33,8 @@ let private tree () : Node<obj> =
                           Text = TextSource.Literal "memoised text" } ] }
 
 /// An element stand-in: the memo never inspects it, so its identity is all a
-/// test needs. `Unchecked.defaultof` keeps Feliz's .NET surface out of the way.
-let private element () : ReactElement = Unchecked.defaultof<ReactElement>
+/// test needs. `Unchecked.defaultof` keeps the renderer's .NET element shim out of the way.
+let private element () : RenderedElement = Unchecked.defaultof<RenderedElement>
 
 let private entry (context: obj) (generation: int) : Render.SubtreeMemo.Entry =
     { Context = context

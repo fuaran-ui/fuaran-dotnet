@@ -19,6 +19,5 @@
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
-    <PackageReference Include="Feliz" />
   </ItemGroup>
 </Project>

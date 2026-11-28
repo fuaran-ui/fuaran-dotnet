@@ -190,6 +190,9 @@ let view (model: Model) (dispatch: Msg -> unit) =
             ApplyHandler = Some applyHandler }
 
     Render.render ctx model.Tree
+    // The renderer returns the opaque RenderedElement, which is a React element at
+    // runtime; the MVU view takes Fable.React's, so the edge is an identity cast.
+    |> unbox<Fable.React.ReactElement>
 
 // ─── Phase 192 — cross-pipeline apply-parity probe ─────────────────────────────
 //

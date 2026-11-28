@@ -40,6 +40,7 @@ open Browser.Types
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Fable-safe TreeDiff / StepDiff mirror ────────────────────────────────
 //
@@ -292,7 +293,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
                       "Chain integrity failed ✗ — refusing to render diff against corrupt records. Surface from StepDiffsError.IntegrityFailed." ]
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "inspector-page"
                 prop.className "catalog-inspector"

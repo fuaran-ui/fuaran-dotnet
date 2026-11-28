@@ -18,6 +18,7 @@ open Feliz
 
 open Fuaran.UI.Ops
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 open Fuaran.Sample.SdkIntegration.Client.Turn
 
@@ -77,7 +78,7 @@ let init () : Model * Cmd<Msg> = Turn.init (), Cmd.none
 /// into this app's own update loop.
 let private renderTree (treeJson: string) =
     match JsonDecode.decodeNodeObj treeJson with
-    | Ok tree -> Render.renderWithSources BindingResolver.empty ignore tree
+    | Ok tree -> Render.renderWithSources BindingResolver.empty ignore tree |> Rendered.toReact
     | Error e ->
         Html.p
             [ prop.role "alert"

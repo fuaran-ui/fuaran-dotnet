@@ -18,7 +18,6 @@ module FableRender.SubtreeMemoTests
 
 #if FABLE_COMPILER
 open Fable.Core
-open Feliz
 open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
@@ -39,7 +38,7 @@ open FableRender.Expecto
   walk($0);
   return found;
 })()""")>]
-let private elementsOf (root: ReactElement) : obj array = jsNative
+let private elementsOf (root: RenderedElement) : obj array = jsNative
 
 [<Emit("($0.props != null ? $0.props[$1] : undefined)")>]
 let private propOf (element: obj) (name: string) : obj = jsNative
@@ -47,7 +46,7 @@ let private propOf (element: obj) (name: string) : obj = jsNative
 /// The element carrying `data-fuaran-node-id = id` in `root`'s element tree.
 /// Absent is a failure, never a pass: a probe that cannot find its subject has
 /// proved nothing.
-let private elementFor (id: string) (root: ReactElement) : obj =
+let private elementFor (id: string) (root: RenderedElement) : obj =
     match
         elementsOf root
         |> Array.tryFind (fun e -> (propOf e "data-fuaran-node-id") = box id)

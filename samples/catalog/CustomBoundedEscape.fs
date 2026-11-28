@@ -35,6 +35,7 @@ open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
@@ -215,17 +216,17 @@ let private wireRuntime (dispatch: Msg -> unit) : Runtime.IFuaranRuntime =
     let registry = Runtime.CustomRendererRegistry()
 
     // Green path: register hash matches tree's greenHash.
-    registry.Register("bounded-escape-70", "GreenPanel", greenRenderer, greenHash)
+    registry.RegisterReact("bounded-escape-70", "GreenPanel", greenRenderer, greenHash)
 
     // Mismatch path: register hash differs from tree's strict + advisory
     // tree-declared hashes; both will fire Warn channel with structured
     // payload.
-    registry.Register("bounded-escape-70", "MismatchPanel", mismatchRenderer, mismatchRegistryHash)
+    registry.RegisterReact("bounded-escape-70", "MismatchPanel", mismatchRenderer, mismatchRegistryHash)
 
     // Missing-exposed-ids path: register with no hash, so the renderer
     // skips hash verification; the DOM walk then catches the missing
     // exposed-id.
-    registry.Register("bounded-escape-70", "MissingExposedIdsPanel", missingExposedIdsRenderer)
+    registry.RegisterReact("bounded-escape-70", "MissingExposedIdsPanel", missingExposedIdsRenderer)
 
     CapturingRuntime(dispatch, registry) :> Runtime.IFuaranRuntime
 
@@ -237,7 +238,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "bounded-escape-70-page"
                 prop.style [ style.padding 24 ]

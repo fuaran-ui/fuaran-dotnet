@@ -23,6 +23,7 @@ open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model (state lives in the StateStore, not here) ────────────────────────
 
@@ -96,7 +97,7 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
         SampleContext.render (BrowserRuntime.create ()) BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "state-reactive-106-page"
                 prop.className "catalog-state-reactive"
@@ -117,7 +118,8 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
                                             [ Render.renderStateReactive
                                                   BindingResolver.empty
                                                   dispatch
-                                                  (readerPane "pane-a" "Pane A") ] ]
+                                                  (readerPane "pane-a" "Pane A")
+                                              |> Rendered.toReact ] ]
                                   Html.div
                                       [ prop.testId "reader-pane-b"
                                         prop.style [ style.flexGrow 1; style.padding 12 ]
@@ -125,4 +127,5 @@ let view (_model: Model) (dispatch: Msg -> unit) : ReactElement =
                                             [ Render.renderStateReactive
                                                   BindingResolver.empty
                                                   dispatch
-                                                  (readerPane "pane-b" "Pane B") ] ] ] ] ] ] ]
+                                                  (readerPane "pane-b" "Pane B")
+                                              |> Rendered.toReact ] ] ] ] ] ] ]

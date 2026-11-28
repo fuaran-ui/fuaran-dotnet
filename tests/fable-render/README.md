@@ -1,7 +1,7 @@
 # The client render suite (Phase 2550)
 
-The client renderer (`Fuaran.UI.Renderer`) emits Feliz elements, and Feliz builds its properties with an erased
-`unbox`: free under Fable, a real cast on .NET, where a `(string * obj)` tuple is not an `IReactProperty`. So the
+The client renderer (`Fuaran.UI.Renderer`) emits React elements through its own binding, which builds properties with an
+erased `unbox`: free under Fable, a real cast on .NET, where a `(string * obj)` tuple is not an `IReactProperty`. So the
 renderer compiles on .NET but every path that emits an element throws at its first property, and the .NET suites can
 pin only the value-level pieces around an element. This suite is where a claim about the ELEMENTS, or about a mounted
 DOM, is proved.

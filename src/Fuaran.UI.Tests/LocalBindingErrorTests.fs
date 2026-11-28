@@ -173,11 +173,11 @@ let dirtyGuardTests =
               // make the assertion above pass whenever EITHER component carried
               // the guard. Two synthetic declarations, one guarded and one not.
               let lines =
-                  [| "let private renderLocalText (props: LocalTextProps) : ReactElement ="
+                  [| "let private renderLocalText (props: LocalTextProps) : RenderedElement ="
                      "    let dirty = React.useRef false"
                      "    ()"
                      ""
-                     "let private renderLocalNumber (props: LocalNumberProps) : ReactElement ="
+                     "let private renderLocalNumber (props: LocalNumberProps) : RenderedElement ="
                      "    ()" |]
 
               let textBody = componentBody lines "let private renderLocalText"

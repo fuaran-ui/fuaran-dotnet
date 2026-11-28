@@ -23,6 +23,7 @@ open Fuaran.UI
 open Fuaran.UI.Types
 open Fuaran.UI.Ops.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 open Fuaran.UI.Ops
 
 importSideEffects "./index.css"
@@ -155,7 +156,7 @@ let private aiEvalUpdate (msg: AiEvalMsg) (model: AiEvalModel) : AiEvalModel * C
 
 let private aiEvalView (model: AiEvalModel) (dispatch: AiEvalMsg -> unit) : ReactElement =
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.className "catalog-ai-eval"
                 prop.children
@@ -193,7 +194,7 @@ let private parityView () : ReactElement =
     let pair = Parity.pairs |> List.tryFind (fun p -> p.Id = pairId)
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           match pair with
           | None ->
               Html.div
@@ -251,7 +252,9 @@ let private bootInteractionStates () : unit =
         | None -> false
 
     let view () _ : ReactElement =
-        React.Fragment [ Render.themeStyleElement Defaults.theme; InteractionStates.view bridge ]
+        React.Fragment
+            [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
+              InteractionStates.view bridge ]
 
     Program.mkSimple (fun () -> ()) (fun () () -> ()) view
     |> Program.withReactSynchronous mountId

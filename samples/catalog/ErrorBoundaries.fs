@@ -42,6 +42,7 @@ open Fuaran.UI
 open Fuaran.Core
 open Fuaran.UI.Types
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 // ─── Model ─────────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ type private CapturingRuntime(dispatch: Msg -> unit, registry: Runtime.CustomRen
 
 let private wireRuntime (dispatch: Msg -> unit) : Runtime.IFuaranRuntime =
     let registry = Runtime.CustomRendererRegistry()
-    registry.Register(throwingModuleId, throwingComponentId, throwingRenderer)
+    registry.RegisterReact(throwingModuleId, throwingComponentId, throwingRenderer)
     CapturingRuntime(dispatch, registry) :> Runtime.IFuaranRuntime
 
 // ─── Tree construction ───────────────────────────────────────────────────
@@ -212,7 +213,7 @@ let view (model: Model) (dispatch: Msg -> unit) : ReactElement =
     let render = SampleContext.render runtime BindingResolver.empty dispatch
 
     React.Fragment
-        [ Render.themeStyleElement Defaults.theme
+        [ Render.themeStyleElement Defaults.theme |> Rendered.toReact
           Html.div
               [ prop.id "error-boundary-60-page"
                 prop.style [ style.padding 24 ]

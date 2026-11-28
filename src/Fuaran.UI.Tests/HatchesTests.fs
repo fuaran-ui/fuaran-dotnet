@@ -262,8 +262,8 @@ let tests =
               "the registry enumeration this report rests on"
               [ test "Registrations names every scope, and is deterministically ordered" {
                     let registry = Runtime.CustomRendererRegistry()
-                    registry.RegisterInScope("admin", "zeta", "Widget", (fun _ -> Feliz.Html.none))
-                    registry.Register("alpha", "Widget", (fun _ -> Feliz.Html.none))
+                    registry.RegisterInScope("admin", "zeta", "Widget", (fun _ -> Unchecked.defaultof<RenderedElement>))
+                    registry.Register("alpha", "Widget", (fun _ -> Unchecked.defaultof<RenderedElement>))
 
                     let listed = registry.Registrations
 
@@ -288,7 +288,7 @@ let tests =
                     registry.Register(
                         "alpha",
                         "Widget",
-                        (fun _ -> Feliz.Html.none),
+                        (fun _ -> Unchecked.defaultof<RenderedElement>),
                         { Algorithm = "SHA256"
                           Hash = "abc123"
                           Strictness = HashStrictness.Enforced }

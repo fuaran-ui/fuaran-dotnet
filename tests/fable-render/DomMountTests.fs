@@ -16,6 +16,7 @@ module FableRender.DomMountTests
 #if FABLE_COMPILER
 open Fable.Core
 open Feliz
+open Fuaran.UI.Renderer.Feliz
 open Fuaran.Core
 open Fuaran.UI
 open Fuaran.UI.Types
@@ -145,7 +146,7 @@ type private Host(mount: CustomDomMount) =
   };
   return walk($0);
 })()""")>]
-let private holds (root: ReactElement) (target: ReactElement) : bool = jsNative
+let private holds (root: RenderedElement) (target: RenderedElement) : bool = jsNative
 
 let private seq (log: ResizeArray<string>) : string list = List.ofSeq log
 
@@ -283,12 +284,12 @@ let tests =
           <| fun () ->
               let element = Html.span [ prop.className "react-form"; prop.text "react" ]
               let runtime = MutableRuntime()
-              runtime.Registry.Register("widgets", "card", (fun _ -> element))
+              runtime.Registry.RegisterReact("widgets", "card", (fun _ -> element))
               let node = Fuaran.custom "card" "widgets" "card" Map.empty None []
 
               let ctx =
                   { Render.RenderContext.create BindingResolver.empty ignore node with
                       Runtime = runtime }
 
-              Expect.isTrue (holds (Render.render ctx node) element) "the registered element itself" ]
+              Expect.isTrue (holds (Render.render ctx node) (Rendered.ofReact element)) "the registered element itself" ]
 #endif

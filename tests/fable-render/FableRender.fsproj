@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Phase 2550 — the client render suite. The client renderer's elements are Feliz's, which build
-    only under Fable (on .NET a `(string * obj)` tuple is not an `IReactProperty`, so every path that
-    emits an element throws at its first property). This project is where a claim about those
+    Phase 2550 — the client render suite. The client renderer's elements are React elements built by
+    its own binding, which build only under Fable (on .NET a `(string * obj)` tuple is not an
+    `IReactProperty`, so every path that emits an element throws at its first property). This project is where a claim about those
     elements is proved: it is compiled by Fable and run under Node with a DOM by `drive.mjs`, as a
     named leg of the Fable stage (`tests/fable-laws/fable-check.ps1`). See README.md.
 
@@ -38,10 +38,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fuaran.UI\Fuaran.UI.fsproj" />
     <ProjectReference Include="..\..\src\Fuaran.UI.Renderer\Fuaran.UI.Renderer.fsproj" />
+    <!-- Phase 2514: the React-form Custom-renderer case registers a Feliz element
+         through the adapter, the route a Feliz host takes. -->
+    <ProjectReference Include="..\..\src\Fuaran.UI.Renderer.Feliz\Fuaran.UI.Renderer.Feliz.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FSharp.Core" />
     <PackageReference Include="Fable.Core" />
+    <!-- The React-form case authors its element in Feliz. -->
     <PackageReference Include="Feliz" />
   </ItemGroup>
 </Project>
