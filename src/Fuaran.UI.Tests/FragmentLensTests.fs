@@ -40,6 +40,7 @@ let private bare (id: string) (kind: NodeKind<unit>) : Node<unit> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

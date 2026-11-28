@@ -195,6 +195,7 @@ let private seedingGrid (id: string) (key: string) : Node<Msg> =
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None
       Motion = None }
@@ -214,6 +215,7 @@ let private gridWithSource (id: string) (source: Binding<Map<string, obj> seq>) 
           Accessibility = None
           Fallback = None
           ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None
           Motion = None }
@@ -340,6 +342,7 @@ let private sortGrid
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -373,6 +376,7 @@ let private editGrid
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -400,6 +404,7 @@ let private pagedGrid
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -612,6 +617,7 @@ let private advancingSwitch
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Motion = None
       State = None
       Style = None
@@ -643,6 +649,7 @@ let private breakBox
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None
       Motion = None }
@@ -700,6 +707,7 @@ let private repeatHeaderGrid (id: string) (columns: ColumnErased<Msg> list) : No
           Accessibility = None
           Fallback = None
           ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None
           Motion = None }
@@ -740,6 +748,7 @@ let private exportableGrid (id: string) (source: Binding<Row seq>) (columns: Col
           Accessibility = None
           Fallback = None
           ExtraAttributes = None
+          KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
           Tooltip = None
           Visible = None
           Motion = None }
@@ -1591,6 +1600,7 @@ let tests =
                     Motion = Defaults.Motion.none
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 
@@ -4502,6 +4512,7 @@ let tests =
                               Accessibility = None
                               Fallback = None
                               ExtraAttributes = None
+                              KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                               Tooltip = None
                               Visible = None
                               Motion = None } ]
@@ -5047,6 +5058,7 @@ let private transferGrid
       Accessibility = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Motion = None
       State = None
       Style = None
@@ -6009,6 +6021,7 @@ let private pillGridWith (id: string) (map: Map<string, ToneVariant>) (dflt: Ton
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

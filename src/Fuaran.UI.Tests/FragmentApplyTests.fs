@@ -27,6 +27,7 @@ let private cardFragment: ParamFragment<unit> =
                         Motion = None
                         Fallback = None
                         ExtraAttributes = None
+                        KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                         Tooltip = None
                         Visible = None } ] }
 
@@ -112,6 +113,7 @@ let tests =
                     Motion = None
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 

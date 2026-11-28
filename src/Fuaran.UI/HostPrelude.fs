@@ -603,3 +603,74 @@ module LocalCodec =
         match decimals, tryFloat v with
         | Some d, Some f -> fixedText d f
         | _ -> identityFormat v
+
+/// The members a node's JSON carried that its shape does not declare (WIRE_FORMAT §15.8,
+/// Phase 2880): the node's one host-only slot, never read, kept on re-encode.
+///
+/// Each entry is keyed by the member's path inside the node (`kind.zzz`,
+/// `kind.fields[2].zzz`, `accessibility.zzz`, or `zzz` on the envelope) and stops at a
+/// child node, which holds its own. The value is the member's canonical rule-12 payload; a
+/// value holding a null is never an entry (§15.8 rule 3).
+///
+/// There is no public way to add an entry: only the decoder fills one, and the apply engine
+/// moves entries as §15.8 rules. An author can write only `KeptMembers.empty`, which every
+/// smart constructor writes for them, so no constructor produces a kept member.
+[<CustomEquality; NoComparison>]
+type KeptMembers =
+    private
+    | KeptMembers of Map<PathSegment list, JVal>
+
+    override this.Equals(other: obj) =
+        match other with
+        | :? KeptMembers as o ->
+            let (KeptMembers a) = this
+            let (KeptMembers b) = o
+            a = b
+        | _ -> false
+
+    override this.GetHashCode() =
+        let (KeptMembers m) = this
+        hash (Map.toList m)
+
+/// Reading a node's kept members, and the internal writes the decoder and apply engine use.
+[<RequireQualifiedAccess>]
+module KeptMembers =
+    /// No kept member: what every constructor writes.
+    let empty: KeptMembers = KeptMembers Map.empty
+
+    /// Every entry, in path order.
+    let entries (KeptMembers m) : (PathSegment list * JVal) list = Map.toList m
+
+    let isEmpty (KeptMembers m) : bool = Map.isEmpty m
+
+    /// The entries whose path starts with `prefix`, with the prefix removed.
+    let under (prefix: PathSegment list) (KeptMembers m) : (PathSegment list * JVal) list =
+        let n = List.length prefix
+
+        m
+        |> Map.toList
+        |> List.choose (fun (p, v) ->
+            if List.length p > n && List.truncate n p = prefix then
+                Some(List.skip n p, v)
+            else
+                None)
+
+    /// Build from entries. Internal: only the decoder and the apply engine fill a slot.
+    let internal ofEntries (es: (PathSegment list * JVal) seq) : KeptMembers = KeptMembers(Map.ofSeq es)
+
+    /// Drop every entry under `prefix` (the prefix itself included), and install
+    /// `replacement` beneath it: the write of a declared member replaces its whole value.
+    let internal replaceUnder
+        (prefix: PathSegment list)
+        (replacement: (PathSegment list * JVal) list)
+        (KeptMembers m)
+        : KeptMembers =
+        let n = List.length prefix
+
+        let kept =
+            m
+            |> Map.filter (fun p _ -> not (List.length p >= n && List.truncate n p = prefix))
+
+        replacement
+        |> List.fold (fun acc (rest, v) -> Map.add (prefix @ rest) v acc) kept
+        |> KeptMembers

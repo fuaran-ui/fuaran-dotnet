@@ -39,6 +39,7 @@ let private fragment: ParamFragment<unit> =
                         Motion = None
                         Fallback = None
                         ExtraAttributes = None
+                        KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                         Tooltip = None
                         Visible = None } ] }
 
@@ -68,6 +69,7 @@ let private sameNameOtherBody: ParamFragment<unit> =
                         Motion = None
                         Fallback = None
                         ExtraAttributes = None
+                        KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                         Tooltip = None
                         Visible = None } ] }
 
@@ -104,6 +106,7 @@ let private closureBodied (hidden: string) : ParamFragment<unit> =
                         Motion = None
                         Fallback = None
                         ExtraAttributes = None
+                        KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                         Tooltip = None
                         Visible = None } ] }
 

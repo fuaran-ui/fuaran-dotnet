@@ -70,6 +70,7 @@ let private gridWithEditable (editable: bool) (source: Binding<Row seq>) : Node<
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -102,6 +103,7 @@ let private gridNamingFields
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -242,6 +244,7 @@ let tests =
                     Motion = Defaults.Motion.none
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }
 

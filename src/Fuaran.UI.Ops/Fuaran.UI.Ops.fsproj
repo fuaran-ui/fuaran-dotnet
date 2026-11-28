@@ -27,6 +27,9 @@
          the text-level machinery, compiled BEFORE the decoder that parameterises
          it and publishes the complete entry point as JsonDecode.repair. -->
     <Compile Include="Repair.fs" />
+    <!-- Phase 2880: the declared-member table the decoder keeps undeclared members against
+         (GENERATED from idl.json by src/Fuaran.UI.Idl/WireShapes.fs). -->
+    <Compile Include="WireShapes.fs" />
     <Compile Include="JsonDecode.fs" />
     <!-- Draft 2020-12 JSON Schema generator for the canonical wire format
          (Phase 96). Standalone string-builder (no internal deps); the third

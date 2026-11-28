@@ -160,4 +160,13 @@
     <PackageReference Include="Fuaran.Core.OpStream" />
     <PackageReference Include="Fuaran.Program.Bounded" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Phase 2880: `KeptMembers` (HostPrelude.fs) has no public way to add an entry. The
+         decoder and the apply engine fill and move entries; the reference's own tests read
+         them. Nothing outside these assemblies can produce a kept member. -->
+    <InternalsVisibleTo Include="Fuaran.UI.Ops" />
+    <InternalsVisibleTo Include="Fuaran.UI.OpStream.Replay" />
+    <InternalsVisibleTo Include="Fuaran.UI.JsonDecode.Tests" />
+    <InternalsVisibleTo Include="Fuaran.UI.Ops.Tests" />
+  </ItemGroup>
 </Project>

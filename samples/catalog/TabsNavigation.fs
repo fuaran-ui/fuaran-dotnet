@@ -108,6 +108,7 @@ let private detailTab: Node<Msg> =
       Motion = Defaults.Motion.none
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 

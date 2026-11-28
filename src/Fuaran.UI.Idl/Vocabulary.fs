@@ -4167,6 +4167,12 @@ let private declared: Idl =
           // uniqueness (§8.1) holds across the subtree, which is what lets a
           // `TreeOp` address a node inside it like any child position (§3.1).
           opt "fallback" TNode
+          // Phase 2880 — the node's KEPT MEMBERS (WIRE_FORMAT §15.8, the ruling of
+          // 2026-11-28): the members the node's JSON carried that its shape does not
+          // declare, by path inside the node. Host-only like the two beside it, so the
+          // generated layer neither reads nor writes it; the hand decoder fills it and
+          // the canonical encoder writes its entries back at their paths.
+          hostOnly "keptMembers" "Fuaran.UI.HostPrelude.KeptMembers" "Fuaran.UI.HostPrelude.KeptMembers.empty"
           hostOnly "motion" "Motion option" "None"
           opt "state" (TRecord "StateBehaviour")
           opt "style" (TRecord "SemanticStyle")
@@ -4762,6 +4768,8 @@ let private docs: (string * string) list =
       "Host-only extra attributes (such as `data-*` test hooks) for the rendered element; never emitted on the wire."
       "node:fallback",
       "An optional node a reader that does not understand this node's kind renders in its place (§15.3); it must not itself use that kind or nest another fallback. Omitted means a labelled placeholder."
+      "node:keptMembers",
+      "Host-only: the members this node's JSON carried that its shape does not declare, by path inside the node; never read, and written back at their paths on re-encode (§15.8)."
       "node:motion", "Host-only animation token for this node; never emitted on the wire. Omitted means no animation."
       "node:state",
       "Optional nodes to render while this node is loading or empty, and a handler for its error state. Omitted means none."

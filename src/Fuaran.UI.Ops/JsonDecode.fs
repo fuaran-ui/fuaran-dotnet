@@ -376,6 +376,81 @@ type private Json =
     | JArray of Json list
     | JObject of Map<string, Json>
 
+// ─── Phase 2880 — the read log: which members a decode read (WIRE_FORMAT §15.8) ───
+//
+// A member a decoder never reads is undeclared, and it is KEPT. Every closed-table object
+// the decoder opens goes through `requireObject` or a field helper below, and every member
+// it reads goes through those helpers, so the log holds, per opened object (by reference),
+// the names read. When a node has decoded, `keptMembersOf` walks the node's own JSON: an
+// unread member of an opened object is kept at its path inside the node. A map-typed
+// object (`requireMap`) holds entries, never members, so all of its keys count as read; an
+// object no helper opened (a rule-12 payload, carried whole by its own slot) is not walked;
+// and a child node's object is the child's, with its own slot.
+//
+// Under Fable the slot is a plain static, as `DefectSink`'s is.
+[<AllowNullLiteral>]
+type private ReadLog() =
+    member val Opened =
+        System.Collections.Generic.Dictionary<obj, System.Collections.Generic.HashSet<string>>(HashIdentity.Reference)
+
+    member val Nodes = System.Collections.Generic.HashSet<obj>(HashIdentity.Reference)
+
+#if FABLE_COMPILER
+type private ReadTracker() =
+    static let mutable current: ReadLog = null
+
+    static member Current
+        with get () = current
+        and set (v: ReadLog) = current <- v
+#else
+type private ReadTracker =
+    [<System.ThreadStatic; DefaultValue>]
+    static val mutable private current: ReadLog
+
+    static member Current
+        with get () = ReadTracker.current
+        and set (v: ReadLog) = ReadTracker.current <- v
+#endif
+
+/// Run `f` with a read log on: a fresh one at the outermost decode, the caller's when one
+/// is already on (a node decoded inside an op shares the op's document).
+let private withReadLog (f: unit -> 'a) : 'a =
+    if isNull ReadTracker.Current then
+        ReadTracker.Current <- ReadLog()
+
+        try
+            f ()
+        finally
+            ReadTracker.Current <- null
+    else
+        f ()
+
+/// The read set of an object, opening it on first use.
+let private readSetOf (m: Map<string, Json>) : System.Collections.Generic.HashSet<string> =
+    let log = ReadTracker.Current
+
+    if isNull log then
+        null
+    else
+        match log.Opened.TryGetValue(box m) with
+        | true, set -> set
+        | _ ->
+            let set = System.Collections.Generic.HashSet<string>()
+            log.Opened.[box m] <- set
+            set
+
+let private logOpened (m: Map<string, Json>) : unit = readSetOf m |> ignore
+
+let private logRead (m: Map<string, Json>) (key: string) : unit =
+    match readSetOf m with
+    | null -> ()
+    | set -> set.Add key |> ignore
+
+let private logNode (m: Map<string, Json>) : unit =
+    match ReadTracker.Current with
+    | null -> ()
+    | log -> log.Nodes.Add(box m) |> ignore
+
 /// The §21 JSON-level bounds as Core's limits record: this host's values, one
 /// count (`MaxArrayLength`) for both an array's items and an object's members.
 let private wireJsonLimits: JsonLimits =
@@ -1443,6 +1518,115 @@ let rec private jsonToJValStrict (depth: int) (path: string) (j: Json) : Result<
             |> sequenceAll
             |> Result.map Fuaran.Core.JObj
 
+/// Phase 2880 — the members of an object's JSON (a node, a decoded op, a value an op writes)
+/// that its shape does not declare (WIRE_FORMAT §15.8), by path inside that object. A member is undeclared when the declared-member table
+/// (`WireShapes`, rendered from `idl.json`) does not name it for its object's shape AND no
+/// decoder read it: the table speaks for the positions the generated layer decodes, and the
+/// read log for this decoder's own lenient spellings (an alias, a shorthand), which the IDL
+/// does not list. The walk follows declared and read members only; it stops at a child node
+/// (its own slot holds its kept members), at a value whose shape it cannot name and that no
+/// helper opened (a payload its own slot carries whole), and at a scalar. A member whose value
+/// holds a null at any depth is not kept (§15.8 rule 3); a kept value is the rule-12 payload
+/// of its JSON, so it re-encodes canonically.
+///
+/// `rootShape` is the declared shape of `root`: the node envelope for a node, the op table's
+/// `$type`-chosen entry for a decoded op, and a field's own shape for a value an op writes.
+let private keptEntriesUnder
+    (log: ReadLog)
+    (root: Map<string, Json>)
+    (rootShape: (string * WireShapes.Shape) list option)
+    : (Fuaran.Core.PathSegment list * Fuaran.Core.JVal) list =
+    let rec holdsNull (j: Json) =
+        match j with
+        | JNull -> true
+        | JArray xs -> List.exists holdsNull xs
+        | JObject m -> m |> Map.exists (fun _ v -> holdsNull v)
+        | _ -> false
+
+    let byTag (table: Map<string, (string * WireShapes.Shape) list>) (m: Map<string, Json>) =
+        match Map.tryFind "$type" m with
+        | Some(JString tag) -> Map.tryFind tag table
+        | _ -> None
+
+    let kept = ResizeArray<Fuaran.Core.PathSegment list * Fuaran.Core.JVal>()
+
+    let rec object
+        (rev: Fuaran.Core.PathSegment list)
+        (m: Map<string, Json>)
+        (shape: (string * WireShapes.Shape) list option)
+        =
+        let read =
+            match log.Opened.TryGetValue(box m) with
+            | true, set -> set
+            | _ -> null
+
+        if shape.IsSome || not (isNull read) then
+            let declared = shape |> Option.map Map.ofList
+
+            for KeyValue(k, v) in m do
+                let at = Fuaran.Core.PathSegment.Key k :: rev
+
+                match declared |> Option.bind (Map.tryFind k) with
+                | Some s -> value at s v
+                | None when not (isNull read) && read.Contains k -> unnamed at v
+                | None ->
+                    if not (holdsNull v) then
+                        match jsonToJValStrict 0 "$" v with
+                        | Ok jv -> kept.Add(List.rev at, jv)
+                        | Error _ -> ()
+
+    and value (rev: Fuaran.Core.PathSegment list) (s: WireShapes.Shape) (j: Json) =
+        match s, j with
+        | _, JObject m when log.Nodes.Contains(box m) -> ()
+        | WireShapes.Shape.Kind, JObject m -> object rev m (byTag WireShapes.kinds m)
+        | WireShapes.Shape.Op, JObject m -> object rev m (byTag WireShapes.ops m)
+        | WireShapes.Shape.Record r, JObject m -> object rev m (Map.tryFind r WireShapes.records)
+        | WireShapes.Shape.Union u, JObject m ->
+            object rev m (Map.tryFind u WireShapes.unions |> Option.bind (fun cases -> byTag cases m))
+        | WireShapes.Shape.List item, JArray xs ->
+            xs
+            |> List.iteri (fun i x -> value (Fuaran.Core.PathSegment.Index i :: rev) item x)
+        | WireShapes.Shape.Map entry, JObject m ->
+            for KeyValue(k, v) in m do
+                value (Fuaran.Core.PathSegment.Key k :: rev) entry v
+        // A node, a scalar, or a value in a lenient spelling of its shape: nothing to walk.
+        | _ -> ()
+
+    // A member read under a name the table does not carry (a lenient alias): its value's
+    // shape is unknown here, so only what a helper opened inside it is walked.
+    and unnamed (rev: Fuaran.Core.PathSegment list) (j: Json) =
+        match j with
+        | JObject m when not (log.Nodes.Contains(box m)) -> object rev m None
+        | JArray xs -> xs |> List.iteri (fun i x -> unnamed (Fuaran.Core.PathSegment.Index i :: rev) x)
+        | _ -> ()
+
+    object [] root rootShape
+    List.ofSeq kept
+
+let private keptOf (entries: (Fuaran.Core.PathSegment list * Fuaran.Core.JVal) list) =
+    if entries.IsEmpty then
+        Fuaran.UI.HostPrelude.KeptMembers.empty
+    else
+        Fuaran.UI.HostPrelude.KeptMembers.ofEntries entries
+
+let private keptMembersOf (node: Map<string, Json>) : Fuaran.UI.HostPrelude.KeptMembers =
+    match ReadTracker.Current with
+    | null -> Fuaran.UI.HostPrelude.KeptMembers.empty
+    | log -> keptOf (keptEntriesUnder log node (Some WireShapes.node))
+
+/// The kept members of a decoded op's own JSON (§15.8: one slot per decoded op). The walk
+/// stops at the nodes the op carries, which hold their own.
+let private keptMembersOfOp (op: Map<string, Json>) : Fuaran.UI.HostPrelude.KeptMembers =
+    match ReadTracker.Current with
+    | null -> Fuaran.UI.HostPrelude.KeptMembers.empty
+    | log ->
+        let shape =
+            match Map.tryFind "$type" op with
+            | Some(JString tag) -> Map.tryFind tag WireShapes.ops
+            | _ -> None
+
+        keptOf (keptEntriesUnder log op shape)
+
 /// Map a `Fuaran.Core.ColumnError` (the compute codecs' six-code envelope) into this host's
 /// `DecodeError` at `path` — surfaced as `WRONG_TYPE` (the closest host code for a
 /// structurally-parsed but invalid compute sub-tree), with the Core failure as the message.
@@ -1451,7 +1635,20 @@ let private coreError (path: string) (ce: Fuaran.Core.ColumnError) : DecodeError
 
 let private requireObject (path: string) (j: Json) : Result<Map<string, Json>, DecodeError> =
     match j with
-    | JObject fields -> Ok fields
+    | JObject fields ->
+        logOpened fields
+        Ok fields
+    | _ -> wrongType path "JSON object"
+
+/// An object whose members are ENTRIES of a map type (`Custom.props`, `FragmentRef.args`, an
+/// I18n argument bag): every key is the map's, so none is undeclared (§15.8).
+let private requireMap (path: string) (j: Json) : Result<Map<string, Json>, DecodeError> =
+    match j with
+    | JObject fields ->
+        for KeyValue(k, _) in fields do
+            logRead fields k
+
+        Ok fields
     | _ -> wrongType path "JSON object"
 
 /// Lenient AI-ingest (WIRE_FORMAT.md §3.6, generalised 2026-07-18): a Static
@@ -1522,7 +1719,9 @@ let private requireArray (path: string) (j: Json) : Result<Json list, DecodeErro
     | JArray xs -> Ok xs
     | _ -> wrongType path "JSON array"
 
-let private tryField (fields: Map<string, Json>) (key: string) : Json option = Map.tryFind key fields
+let private tryField (fields: Map<string, Json>) (key: string) : Json option =
+    logRead fields key
+    Map.tryFind key fields
 
 /// Phase 2300 — the declared-default rule (WIRE_FORMAT.md §3.6): a field the
 /// IDL declares `omitDefault` is ABSENT from the canonical form at its default,
@@ -1546,7 +1745,7 @@ let private requireField
     (key: string)
     (expected: string)
     : Result<Json, DecodeError> =
-    match Map.tryFind key fields with
+    match tryField fields key with
     | Some j -> Ok j
     | None -> missingField path key expected
 
@@ -1570,7 +1769,10 @@ let private requireFieldAliased
     (aliases: string list)
     (expected: string)
     : Result<Json, DecodeError> =
-    match Map.tryFind canonical fields with
+    // Every alias is a declared spelling, read whether or not the canonical one won.
+    aliases |> List.iter (logRead fields)
+
+    match tryField fields canonical with
     | Some j -> Ok j
     | None ->
         match aliases |> List.tryPick (fun a -> Map.tryFind a fields) with
@@ -1578,12 +1780,14 @@ let private requireFieldAliased
         | None -> missingField path canonical expected
 
 let private optFieldAliased (fields: Map<string, Json>) (canonical: string) (aliases: string list) : Json option =
-    match Map.tryFind canonical fields with
+    aliases |> List.iter (logRead fields)
+
+    match tryField fields canonical with
     | Some j -> Some j
     | None -> aliases |> List.tryPick (fun a -> Map.tryFind a fields)
 
 let private requireDiscriminator (path: string) (fields: Map<string, Json>) : Result<string, DecodeError> =
-    match Map.tryFind "$type" fields with
+    match tryField fields "$type" with
     | Some(JString s) -> Ok s
     | Some _ -> wrongType (path + ".$type") "JSON string discriminator"
     | None -> missingField path "$type" "DU object must carry a '$type' discriminator string"
@@ -1631,6 +1835,7 @@ let private placeholderClosureNode: Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -2350,7 +2555,7 @@ let rec private decodeObj (j: Json) : obj =
 let private decodeJVal (path: string) (j: Json) : Result<JVal, DecodeError> = jsonToJValStrict 1 path j
 
 let private decodeJValMap (path: string) (j: Json) : Result<Map<string, JVal>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // Every member, then the first error (WIRE_FORMAT §29.1).
@@ -2627,7 +2832,7 @@ and private decodeExprParams (path: string) (fields: Map<string, Json>) : Result
         // unlike the options map, which is refused. Observed as every
         // provider's first guess (21/31 launch-eval failures repair-proof).
         | Some(JObject _ as pJ) ->
-            match requireObject (path + ".params") pJ with
+            match requireMap (path + ".params") pJ with
             | Error e -> Error e
             | Ok pf ->
                 pf
@@ -2672,7 +2877,7 @@ and private decodeBindingJVal (path: string) (j: Json) : Result<Binding<JVal>, D
 /// conformant host refused it — a cross-host divergence with no fixture to catch
 /// it, manufactured by this phase.
 and private decodeI18nArgMap (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // Every argument, then the first error (WIRE_FORMAT §29.1).
@@ -3352,7 +3557,7 @@ and private bindingGeneric<'T>
                     "Static | Query | Filter | Selection | State | Now | Computed | I18n | Local | Format | Transform | Expr | Invoke | Bound"
 
 and private decodeBindingObjArgs (path: string) (j: Json) : Result<Map<string, Binding<JVal>>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         let entries = fields |> Map.toList
@@ -7139,7 +7344,7 @@ let private decodeInputKind (path: string) (j: Json) : Result<NodeKind<obj>, Dec
 /// (`…map.Delayed`), because "one of your tones is wrong" is not an actionable
 /// report when the map has nine entries.
 let private decodeToneMap (path: string) (j: Json) : Result<Map<string, ToneVariant>, DecodeError> =
-    match requireObject path j with
+    match requireMap path j with
     | Error e -> Error e
     | Ok fields ->
         // `decodeTone` is reused for the VALUE vocabulary + the Phase 460 aliases,
@@ -8641,6 +8846,50 @@ let private walkRoot (policy: DecodePolicy) : Walk =
 /// One level further down, same document-wide node budget.
 let private descend (w: Walk) : Walk = { w with Depth = w.Depth + 1 }
 
+/// `$`-rooted text of a kept member's path inside its object (`.kind.zzz`, `.ops[1].zzz`).
+let private keptPathText (segments: Fuaran.Core.PathSegment list) : string =
+    segments
+    |> List.map (fun s ->
+        match s with
+        | Fuaran.Core.PathSegment.Key k -> "." + k
+        | Fuaran.Core.PathSegment.Index i -> sprintf "[%d]" i)
+    |> String.concat ""
+
+/// Phase 2880 — the policy refusal of WIRE_FORMAT §15.8 (D45 q4 (ii)). Under a policy
+/// narrower than admit-all, a kept member whose value holds a `$type`-discriminated object
+/// at any depth is refused with `KIND_NOT_ADMITTED` at the MEMBER's path: the policy never
+/// decoded what the member holds, so it cannot vouch for it. Plain values are kept, and a
+/// decoder given no policy keeps everything. `path` is the object's own path (`$` for the
+/// root, `$.kind.children[0]` for a child).
+let private refuseKeptUnderPolicy
+    (w: Walk)
+    (path: string)
+    (kept: Fuaran.UI.HostPrelude.KeptMembers)
+    : Result<unit, DecodeError> =
+    if not (DecodePolicy.narrows w.Policy) then
+        Ok()
+    else
+        let rec discriminated (v: Fuaran.Core.JVal) =
+            match v with
+            | Fuaran.Core.JObj members -> members |> List.exists (fun (k, inner) -> k = "$type" || discriminated inner)
+            | Fuaran.Core.JArr items -> List.exists discriminated items
+            | _ -> false
+
+        match
+            Fuaran.UI.HostPrelude.KeptMembers.entries kept
+            |> List.tryFind (snd >> discriminated)
+        with
+        | None -> Ok()
+        | Some(at, _) ->
+            err
+                DecodeErrorCode.KIND_NOT_ADMITTED
+                (path + keptPathText at)
+                (sprintf
+                    "the member '%s' is not declared here and holds a '$type' value, which decode policy '%s' cannot inspect: a policy narrower than admit-all refuses it (WIRE_FORMAT 15.8)"
+                    (keptPathText at |> fun t -> t.TrimStart '.')
+                    w.Policy.Identity)
+                (Some(DecodePolicy.hint w.Policy))
+
 let rec private decodeChildren
     (w: Walk)
     (path: string)
@@ -9375,7 +9624,7 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 match tryField fields "args" with
                 | None -> Ok None
                 | Some a ->
-                    match requireObject (path + ".args") a with
+                    match requireMap (path + ".args") a with
                     | Error e -> Error e
                     | Ok argFields ->
                         argFields
@@ -9446,7 +9695,7 @@ and private decodeNodeKind (w: Walk) (path: string) (j: Json) : Result<NodeKind<
                 match tryField fields "inputs" with
                 | None -> Ok None
                 | Some a ->
-                    match requireObject (path + ".inputs") a with
+                    match requireMap (path + ".inputs") a with
                     | Error e -> Error e
                     | Ok argFields ->
                         argFields
@@ -9761,7 +10010,7 @@ and private decodeNodeAst (w: Walk) (path: string) (j: Json) : Result<Node<obj>,
                 (sprintf "the document holds more than the wire limit MaxNodes = %d nodes" Fuaran.UI.WireLimits.MaxNodes)
                 (Some(sprintf "a tree of no more than %d nodes in total" Fuaran.UI.WireLimits.MaxNodes))
         else
-            decodeNodeAstCore w path j
+            withReadLog (fun () -> decodeNodeAstCore w path j)
 
 /// The node decode proper. Reached only through `decodeNodeAst`, which is what
 /// enforces `MaxDepth` — split out purely so the guard is a two-line function
@@ -9770,6 +10019,8 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
     match requireObject path j with
     | Error e -> Error e
     | Ok fields ->
+        logNode fields
+
         let idR =
             match requireField path fields "id" "Node id string" with
             | Error e -> Error e
@@ -9845,11 +10096,14 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
 
         match idR, kindR, stateR, styleR, accessibilityR, tooltipR, visibleR, fallbackR with
         | Ok id, Ok kind, Ok state, Ok style, Ok accessibility, Ok tooltip, Ok visible, Ok fallback ->
+            let kept = keptMembersOf fields
+
             // Motion / ExtraAttributes are not emitted by the encoder
             // (see Types.fs lines 213-218 — ExtraAttributes is "the §4d
             // JSON wire shape omits it on emit"; Motion follows the same
             // convention). Decode to None.
-            Ok
+            refuseKeptUnderPolicy w path kept
+            |> Result.map (fun () ->
                 { Id = id
                   Kind = kind
                   State = state
@@ -9858,8 +10112,9 @@ and private decodeNodeAstCore (w: Walk) (path: string) (j: Json) : Result<Node<o
                   Motion = None
                   Fallback = fallback
                   ExtraAttributes = None
+                  KeptMembers = kept
                   Tooltip = tooltip
-                  Visible = visible }
+                  Visible = visible })
         | Error e, _, _, _, _, _, _, _
         | _, Error e, _, _, _, _, _, _
         | _, _, Error e, _, _, _, _, _
@@ -10822,6 +11077,57 @@ let decodeOpWithPolicy (policy: DecodePolicy) (json: string) : Result<TreeOp<obj
     match tryParse json with
     | Error failure -> parseFailure failure
     | Ok j -> decodeTreeOpAst (walkRoot policy) "$" j
+
+// ─── The op's kept members (WIRE_FORMAT §15.8, Phase 2880) ──────────────────
+
+/// The op decode with the op's own host-only slot filled: every member the op's JSON
+/// carried that its shape does not declare, by path inside the op. The op itself is exactly
+/// `decodeOp`'s; the nodes it carries hold their own kept members either way.
+let private decodeOpKeptAst (w: Walk) (j: Json) : Result<KeptOp<obj>, DecodeError> =
+    withReadLog (fun () ->
+        decodeTreeOpAst w "$" j
+        |> Result.bind (fun op ->
+            let kept =
+                match j with
+                | JObject fields -> keptMembersOfOp fields
+                | _ -> Fuaran.UI.HostPrelude.KeptMembers.empty
+
+            refuseKeptUnderPolicy w "$" kept
+            |> Result.map (fun () -> { Op = op; KeptMembers = kept })))
+
+/// `decodeOp`, keeping the members the op's JSON carried that its shape does not declare
+/// (§15.8: one slot per decoded op). `CanonicalJson.encodeOpKept` writes them back, so a
+/// replicated op re-encodes to its producer's bytes; `Apply.applyKept` installs the ones
+/// its value brings into the tree.
+let decodeOpKept (json: string) : Result<KeptOp<obj>, DecodeError> =
+    match tryParse json with
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeOpKeptAst (walkRoot DecodePolicy.admitAll) j
+
+/// `decodeOpKept` under a host-declared admission policy: a kept member holding a `$type`
+/// value is refused with `KIND_NOT_ADMITTED` at its path, as on a node.
+let decodeOpKeptWithPolicy (policy: DecodePolicy) (json: string) : Result<KeptOp<obj>, DecodeError> =
+    match tryParse json with
+    | Error failure -> parseFailure failure
+    | Ok j -> decodeOpKeptAst (walkRoot policy) j
+
+/// The kept members inside a value an op writes, judged against the declared shape of the
+/// member it is written to (`Apply.applyKept`, for an `UpdateProp` carrying a structured
+/// wire value). Table-only: no decoder read the value, so only `idl.json`'s declared members
+/// count as declared.
+let internal keptInValue
+    (shape: WireShapes.Shape)
+    (value: JVal)
+    : (Fuaran.Core.PathSegment list * Fuaran.Core.JVal) list =
+    match parseJVal value (lazy (Canonical.write Rendering.CrossHost value)) with
+    | Error _ -> []
+    | Ok j ->
+        // Wrap the value as the one member of a synthetic object whose shape names it.
+        keptEntriesUnder (ReadLog()) (Map.ofList [ "v", j ]) (Some [ "v", shape ])
+        |> List.choose (fun (p, v) ->
+            match p with
+            | Fuaran.Core.PathSegment.Key "v" :: rest -> Some(rest, v)
+            | _ -> None)
 
 // ─── Behind reader — tolerant decode + the lifted `fallback` (Phase 1812) ────
 

@@ -102,6 +102,7 @@ let private bare (id: string) (kind: NodeKind<obj>) : Node<obj> =
       Accessibility = Option.None
       Fallback = None
       ExtraAttributes = Option.None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None
       Motion = Option.None

@@ -981,6 +981,7 @@ let private genGridColumns: Gen<ColumnErased<obj> list> =
                     Motion = None
                     Fallback = None
                     ExtraAttributes = None
+                    KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
                     Tooltip = None
                     Visible = None }) ]
 
@@ -1501,6 +1502,7 @@ and private placeholderErrorNode: Node<obj> =
       Motion = None
       Fallback = None
       ExtraAttributes = None
+      KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
       Tooltip = None
       Visible = None }
 
@@ -1521,6 +1523,7 @@ and private genNodeSized (size: int) : Gen<Node<obj>> =
               Motion = None
               Fallback = None
               ExtraAttributes = None
+              KeptMembers = Fuaran.UI.HostPrelude.KeptMembers.empty
               Tooltip = None
               Visible = None }
     }

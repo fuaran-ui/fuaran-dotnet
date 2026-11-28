@@ -62,6 +62,7 @@ public static partial class Fuaran
             Fs.None<FsGen.Accessibility>(),
             Fs.None<Microsoft.FSharp.Collections.FSharpMap<string, string>>(),
             Fs.None<FsGen.Node<object>>(),
+            global::Fuaran.UI.HostPrelude.KeptMembersModule.empty,
             Fs.None<FsGen.Motion>(),
             Fs.None<FsGen.StateBehaviour<object>>(),
             Fs.None<FsGen.SemanticStyle>(),
