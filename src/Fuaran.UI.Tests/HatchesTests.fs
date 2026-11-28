@@ -27,6 +27,14 @@ let private registration scope moduleId componentId hasHash : Runtime.CustomRend
       ComponentId = componentId
       HasContentHash = hasHash }
 
+let private reactRenderer: Map<string, JVal> -> RenderedElement =
+    fun _ -> Unchecked.defaultof<RenderedElement>
+
+/// A DOM mount that is never started: registration and the report never run it.
+let private domMount: Runtime.CustomDomMount =
+    { Mount = fun _ _ -> { Update = ignore; Dispose = ignore }
+      Fallback = fun _ -> "" }
+
 /// The posture a host that configured nothing runs under: the shipped enforcing
 /// floor, no development surface.
 let private unconfigured registrations =
@@ -297,6 +305,83 @@ let tests =
                     match registry.Registrations with
                     | [ one ] -> Expect.isTrue one.HasContentHash "the mediation half of the fact rides beside the ids"
                     | other -> failtestf "expected exactly one registration, got %A" other
+                } ]
+
+          testList
+              "Phase 2887 — a registration says which form it is"
+              [ test "each form is recorded at registration and named by the report" {
+                    let registry = Runtime.CustomRendererRegistry()
+                    registry.Register("charts", "Sparkline", reactRenderer)
+                    registry.RegisterDomMountInScope("admin", "maps", "Viewer", domMount)
+
+                    Expect.equal
+                        (registry.Registrations |> List.map (fun r -> r.ModuleId, registry.FormOf r))
+                        [ "charts", Some Runtime.CustomRendererForm.ReactElement
+                          "maps", Some Runtime.CustomRendererForm.DomMount ]
+                        "the form rides beside the registration, read by key, without a field on the record"
+
+                    let account =
+                        (RuntimeHatches.observe (Some registry) false
+                         |> findingFor RuntimeHatches.CustomRendererRegistered)
+                            .Account
+
+                    Expect.stringContains
+                        account
+                        "charts/Sparkline (React form, root scope, no content hash)"
+                        "the React-form registration is named as one"
+
+                    Expect.stringContains
+                        account
+                        "maps/Viewer (DOM mount, scope 'admin', no content hash)"
+                        "a DOM mount is named as one: it holds a live element in the document"
+                }
+
+                test "registering the other form for a key replaces the recorded form, both ways" {
+                    let registry = Runtime.CustomRendererRegistry()
+                    let key = registration None "acme" "Widget" false
+
+                    registry.Register("acme", "Widget", reactRenderer)
+                    registry.RegisterDomMount("acme", "Widget", domMount)
+
+                    Expect.equal
+                        (registry.FormOf key)
+                        (Some Runtime.CustomRendererForm.DomMount)
+                        "a DOM mount replaces a React-form renderer"
+
+                    registry.Register("acme", "Widget", reactRenderer)
+
+                    Expect.equal
+                        (registry.FormOf key)
+                        (Some Runtime.CustomRendererForm.ReactElement)
+                        "and a React-form renderer replaces a DOM mount"
+
+                    Expect.equal (List.length registry.Registrations) 1 "replacement, not a second entry"
+
+                    Expect.stringContains
+                        (RuntimeHatches.customRendererFindingOfRegistry (Some registry)).Account
+                        "acme/Widget (React form"
+                        "the report follows the latest registration"
+                }
+
+                test "a scope that holds nothing has no form, and the scope is part of the key" {
+                    let registry = Runtime.CustomRendererRegistry()
+                    registry.RegisterDomMount("acme", "Widget", domMount)
+
+                    Expect.isNone
+                        (registry.FormOf(registration (Some "admin") "acme" "Widget" false))
+                        "the root registration is not reachable from another scope's key"
+                }
+
+                test "the registrations-only report is unchanged, and the registry-less one stays undecided" {
+                    Expect.equal
+                        (RuntimeHatches.describeRegistration (registration None "charts" "sparkline" true))
+                        "charts/sparkline (root scope, content hash registered)"
+                        "handed the registrations alone, the report names no form it cannot see"
+
+                    Expect.equal
+                        (RuntimeHatches.customRendererFindingOfRegistry None).State
+                        HatchState.Undecided
+                        "no registry offered is still a door nobody looked at"
                 } ]
 
           testList

@@ -7984,6 +7984,29 @@ wrapper on a node that declares exposed ids or renders past an advisory mismatch
 advisory mismatch, a DOM mount, and the unwrapped control) and the `SSR parity — the Custom wrapper (Phase 2885)` list
 in `src/Fuaran.UI.Renderer.Server.Tests/SsrParityTests.fs` (the server half, in bytes against goldens).
 
+### Phase 2887 — a `Custom` registration says which form it is (additive)
+
+**Class: additive.** Package `Fuaran.UI.Renderer`. A new type, new members and new functions only; no record gains a
+field, no union gains a case, and no existing member or function changes its signature.
+
+- **New in `Fuaran.UI.Renderer.Runtime`.** The union `CustomRendererForm` (`ReactElement`, `DomMount`) and the member
+  `CustomRendererRegistry.FormOf(registration)`, which answers the form of the renderer registered at a
+  registration's scope and ids, or `None` when nothing is registered there. The registry records the form when the
+  renderer is registered, because the table holds a closure either way. Registering either form for a key replaces
+  the other, and the recorded form follows the latest registration. `CustomRendererRegistration` is unchanged.
+- **New in `Fuaran.UI.Renderer.RuntimeHatches`.** `describeRegistrationWithForm` and
+  `customRendererFindingOfRegistry`. `observe`, the report a host publishes through the in-page surface and the
+  relay, now reads the registry through the latter, so the `custom-renderer-registered` finding names each
+  registration's form (`React form` or `DOM mount`) beside its scope and hash.
+- **What does not change.** `describeRegistration`, `customRendererFinding` and `observeWith` keep their signatures
+  and their bytes: handed registrations alone, the report names no form it cannot see, so the relay corpus's
+  `hatches-open` fixture is unchanged. No wire byte moves.
+
+**What a consumer must do.** Nothing.
+
+**Certified by** the Phase 2887 cases in `src/Fuaran.UI.Tests/HatchesTests.fs` (both forms named by the report, and
+replacement of either form by the other for the same key).
+
 ---
 
 ## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
