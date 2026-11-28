@@ -92,7 +92,7 @@ let serverRenderTests =
               Expect.isTrue (contains "About us" html) "the link label text"
           }
 
-          test "Markdown renders real HTML (Markdig), not the degraded <pre>" {
+          test "Markdown renders real HTML (the shared GFM renderer), not the degraded <pre>" {
               Expect.isFalse (contains "fuaran-markdown-fallback" html) "no <pre> fallback class"
               Expect.isTrue (contains "<h1" html && contains "Hello" html) "a real heading from markdown"
               Expect.isTrue (contains "<strong>bold</strong>" html) "real bold emphasis"
