@@ -112,6 +112,17 @@ let scaffoldTemplateTests =
                     "JsonDecode.decodeNodeObj"
                     "Render.renderWithSources" ] do
                   Expect.stringContains Scaffold.fsharpFablePanel required "canonical decode/render wiring"
+          }
+
+          test "converts the renderer's element through the Feliz adapter" {
+              // The renderer returns `RenderedElement`, not a Feliz element; a Feliz panel
+              // places it through `Fuaran.UI.Renderer.Feliz`. The compile itself is proved by
+              // the Fable stage's packed-consumer leg.
+              for required in
+                  [ "open Fuaran.UI.Renderer.Feliz"
+                    "|> Rendered.toReact"
+                    "Fuaran.UI.Renderer.Feliz ·" ] do
+                  Expect.stringContains Scaffold.fsharpFablePanel required "the Feliz adapter wiring"
           } ]
 
 /// Phase 1816 — `fuaran scaffold form --schema <file>`. It prints

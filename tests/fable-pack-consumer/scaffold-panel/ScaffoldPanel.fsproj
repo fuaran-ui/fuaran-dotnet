@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The scaffold-panel consumer of the packed-consumer leg. It compiles the F# panel that
+    the CLI's F# scaffold prints, which `fable-pack-consumer.ps1` extracts from the CLI's
+    source to a scratch file, against the PACKED packages the panel's install line names, so a
+    renderer change that breaks the starter a new user gets fails this leg.
+    Nullable is off, as in a project a new user creates: the panel's host is that project, not this
+    repository's nullness-on defaults. Not in the solution and not packed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(FablePackConsumerPanel)" Condition="'$(FablePackConsumerPanel)' != ''" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The panel's install line, as a new user adds it. -->
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Fuaran.UI" />
+    <PackageReference Include="Fuaran.UI.Ops" />
+    <PackageReference Include="Fuaran.UI.Renderer" />
+    <PackageReference Include="Fuaran.UI.Renderer.Feliz" />
+    <PackageReference Include="Fable.Fetch" />
+    <PackageReference Include="Feliz" />
+  </ItemGroup>
+</Project>

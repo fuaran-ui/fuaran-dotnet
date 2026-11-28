@@ -7891,6 +7891,12 @@ from additive to breaking and its number does not move.
 - A type annotation naming `ReactElement` on a renderer result, or on a hand-written `TryRenderCustom`, names
   `RenderedElement` instead.
 
+**The F# scaffold follows.** The panel `fuaran scaffold --target fsharp` prints (and its byte-identical twin in the
+TypeScript scaffolder) is a Feliz host, so it now opens `Fuaran.UI.Renderer.Feliz`, pipes the rendered tree through
+`Rendered.toReact`, and names that package on its install line. The Fable stage's packed-consumer leg compiles the
+panel against the packed packages (`tests/fable-pack-consumer/scaffold-panel/`), so a renderer change that breaks
+the starter fails the gate.
+
 **Certified by** the Fable client render suite (`tests/fable-render/`, whose React-form case now registers a Feliz
 element through `RegisterReact` and asserts the renderer serves that element itself), the .NET suites over the
 unchanged emission sites, and the Fable portability stage, which now enters `Fuaran.UI.Renderer.Feliz` as a graph

@@ -31,7 +31,8 @@ let fsharpFablePanel: string =
 // produced wire tree with the canonical decoder, and renders it with the
 // reference renderer.
 //
-// NuGet: Fuaran.UI · Fuaran.UI.Ops · Fuaran.UI.Renderer · Fable.Fetch · Feliz
+// NuGet: Fuaran.UI · Fuaran.UI.Ops · Fuaran.UI.Renderer · Fuaran.UI.Renderer.Feliz ·
+// Fable.Fetch · Feliz
 // Import the reference stylesheet once in your app entry.
 
 open Fable.Core
@@ -41,6 +42,7 @@ open Feliz
 open Fuaran.UI
 open Fuaran.UI.Ops
 open Fuaran.UI.Renderer
+open Fuaran.UI.Renderer.Feliz
 
 /// POST the prompt (+ the previous turn's tree, making the turn a cheap
 /// repair diff) to the proxy; return the produced tree JSON or an error.
@@ -109,7 +111,9 @@ let FuaranPanel () =
             // conformant host trusts. Dispatch is a no-op until you wire the
             // panel's actions into your app's update loop.
             match JsonDecode.decodeNodeObj json with
-            | Ok tree -> Render.renderWithSources BindingResolver.empty ignore tree
+            // The renderer returns its own element type, which Rendered.toReact turns
+            // into a Feliz child (identity at runtime).
+            | Ok tree -> Render.renderWithSources BindingResolver.empty ignore tree |> Rendered.toReact
             | Error e -> Html.p [ prop.role "status"; prop.text (sprintf "decode failed at %s: %s" e.Path e.Message) ])
 
     Html.section
