@@ -7813,10 +7813,11 @@ document that declares no ceiling is exactly the control it was.
 
 ---
 
-## 0.110.0 — the slot opened after v0.109.1 was released (DRAFT — untagged), by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive
+## 0.110.0 — the slot opened after v0.109.1 was released (DRAFT — untagged), by Phase 2513 (a `Custom` renderer may be a DOM mount), whose change is additive, and advanced to the breaking class by Phase 2514 (the client renderer leaves Feliz)
 
-**Class: additive.** `v0.109.1` is tagged, so nothing rides it. The version ledger cut `<Version>` to 0.110.0 for
-this slot: an additive change takes the next minor.
+**Class: breaking** (Phase 2514; additive until it). `v0.109.1` is tagged, so nothing rides it. The version ledger cut
+`<Version>` to 0.110.0 for this slot: an additive change takes the next minor, and pre-1.0 a breaking change takes
+the same, so Phase 2514 rides the number.
 
 ### Phase 2513 — a `Custom` renderer may be a DOM mount (additive)
 
@@ -7847,6 +7848,53 @@ record gains a field, no union gains a case, and no existing member changes.
 **Certified by** `tests/fable-render/DomMountTests.fs` (mount, update, dispose and failure on a mounted tree, each
 beside its control), the DOM-mount cases in `src/Fuaran.UI.Tests/CustomRendererTests.fs` and
 `src/Fuaran.UI.Renderer.Server.Tests/CustomContractServerTests.fs`.
+
+### Phase 2514 — the client renderer emits with no Feliz in its closure (breaking)
+
+**Class: breaking.** Packages `Fuaran.UI.Renderer` (breaking) and the new `Fuaran.UI.Renderer.Feliz` (new). Pre-1.0 a
+minor may break, and 0.110.0 is the untagged minor slot already open, so this rides it; the slot's class advances
+from additive to breaking and its number does not move.
+
+- **The element type.** Every public signature that named Feliz's `ReactElement` names
+  `Fuaran.UI.Renderer.RenderedElement`: an opaque interface, a React element at runtime, and the only element type
+  on the renderer's public surface. That is the whole `Render` entry family (`render`, `renderWithSources*`,
+  `renderBehind`, `renderStateReactive`, `renderWithTheme`, `themeStyleElement`, `themeStyleElementWithCsp`,
+  `renderWithSourcesAndCsp`), `Hydration`, the control entry points (`ComboboxControl`, `RatingControl`,
+  `TokensControl`, `FileUploadDrop`, `UploadStream`, `PopoverSurface`, `SwitchStage`, `LocalBindings`), the
+  visualisation adapters, and the Custom-renderer surface: `IFuaranRuntime.TryRenderCustom`,
+  `TryRenderCustomInScope`, `TryGetCustomRenderer`, `TryGetCustomRendererInScope`; `CustomRendererRegistry.Register`,
+  `RegisterInScope`, `RegisterContract`, `TryRender`, `TryRenderInScope`, `TryGet`, `TryGetInScope`; and
+  `MutableRuntime.RegisterCustomRenderer` / `BrowserRuntime.RegisterCustomRenderer`.
+- **The closure.** `Feliz`, `Feliz.CompilerPlugins`, `Fable.React.Types`, `Fable.ReactDom.Types` and `Fable.AST` leave
+  the renderer's restore closure. `Fable.Browser.Dom` becomes a direct reference, at 2.4.4, the version the Feliz
+  chain resolved before, so no DOM binding the renderer compiles against moves. The renderer builds its elements
+  through its own internal binding (`ReactBinding.fs`), scoped to what it calls; no React property type is public.
+- **`<Nullable>disable</Nullable>` stays on the renderer.** Removing Feliz was measured against it: F# 10's checker
+  still rejects the browser arms, through Fable.Core's dynamic operators and Fable.Browser.Dom's types (FS3261,
+  FS0043), so Feliz was not the only cause. The project comment now gives the real reason.
+- **New: `Fuaran.UI.Renderer.Feliz`.** `Rendered.toReact` / `Rendered.ofReact` convert, identity at runtime. The
+  React-form Custom route moves here: `CustomRendererRegistry.RegisterReact`, `RegisterReactInScope`,
+  `RegisterReactContract`, and `RegisterReactRenderer` on `MutableRuntime` and `BrowserRuntime`. The DOM-mount route
+  (Phase 2513) is unchanged and needs neither package.
+- **What does not change.** No wire byte, no class name, no attribute and no element the renderer emits moves; the
+  emission sites read as they did. A hand-written `IFuaranRuntime` whose `TryRenderCustom` carries no type
+  annotation compiles unchanged.
+
+**What a consumer must do.**
+
+- A host that passes the result to a React root or to `Hydration`: nothing.
+- A host that authors in Feliz: reference `Fuaran.UI.Renderer.Feliz`, pipe a rendered tree through
+  `Rendered.toReact` where it becomes a Feliz child, and register a Feliz Custom renderer with `RegisterReact` (or
+  `RegisterReactRenderer` on the runtime) instead of `Register` / `RegisterCustomRenderer`.
+- A host on Fable.React without Feliz (an MVU view, for one): cast with `unbox<Fable.React.ReactElement>`, which is
+  identity at runtime.
+- A type annotation naming `ReactElement` on a renderer result, or on a hand-written `TryRenderCustom`, names
+  `RenderedElement` instead.
+
+**Certified by** the Fable client render suite (`tests/fable-render/`, whose React-form case now registers a Feliz
+element through `RegisterReact` and asserts the renderer serves that element itself), the .NET suites over the
+unchanged emission sites, and the Fable portability stage, which now enters `Fuaran.UI.Renderer.Feliz` as a graph
+root. [`docs/RENDER-ENTRIES.md`](docs/RENDER-ENTRIES.md) carries the host table.
 
 ---
 

@@ -9,6 +9,13 @@ much as points on a grid: every one of them is `render` over
 `RenderContext.create`, and they differ only in which fields they let you supply
 and which they pin.
 
+Every entry returns a `RenderedElement` (Phase 2514): opaque, a React element at
+runtime, and the only element type the renderer's public surface names. Hand it to a
+React root, to `Hydration`, or back into the renderer. A host that authors in Feliz
+converts at the edge with `Fuaran.UI.Renderer.Feliz` (`Rendered.toReact` /
+`Rendered.ofReact`); a host on Fable.React without Feliz casts it, which is identity
+(`unbox<Fable.React.ReactElement>`). See [What the entries return](#what-the-entries-return-renderedelement-phase-2514).
+
 This page is the authoritative hosting story for that grid. It exists because
 the alternative — each host reading `Render.fs` and inferring the rule — has
 already produced one durable piece of folklore that outlived the behaviour it
@@ -175,7 +182,7 @@ section of [`../SANITIZATION.md`](../SANITIZATION.md).
 ### `CustomRendererRegistry.RegisterDomMount` — a renderer that is not a React element
 
 A registration takes one of two forms under one key: a function returning a
-`ReactElement`, or a `CustomDomMount` (Phase 2513), which is given an emptied
+`RenderedElement`, or a `CustomDomMount` (Phase 2513), which is given an emptied
 element and the node's props and hands back an `Update` and a `Dispose`. Both
 are reached through the same `TryGetCustomRendererInScope` lookup, so a DOM mount
 needs no runtime member of its own and works through every entry that supplies a
@@ -187,6 +194,12 @@ A `Custom` node re-rendered later by a reader of its own (`renderStateReactive`)
 is built outside that pass and takes the placeholder. On the server, register
 the mount's fallback with `Registry.registerDomMount`. A DOM mount is not
 `NodeKind.Mount`, which composes a guest tree (below).
+
+A renderer written in Feliz registers through `Fuaran.UI.Renderer.Feliz`:
+`registry.RegisterReact` / `RegisterReactInScope` / `RegisterReactContract`, and
+`runtime.RegisterReactRenderer` on `BrowserRuntime` and `MutableRuntime`. Each wraps
+the Feliz function in the identity conversion and lands in the same table, under the
+same scoped lookup, as `Register`. The DOM mount needs neither Feliz nor the adapter.
 
 ### `GuestSeam` — the mount capability policy
 
@@ -221,6 +234,20 @@ because the language tier must not reference the orchestration tier that owns
 the policy. The shape mirrors the renderer's existing late-bound
 `renderGuestHook`.
 
+## What the entries return: `RenderedElement` (Phase 2514)
+
+`Fuaran.UI.Renderer` builds React elements through its own internal binding and
+names no Feliz type anywhere on its public surface; Feliz is not in its restore
+closure. What a host sees is `RenderedElement`, an opaque interface. It cannot be
+inspected and need not be: every use a host has for it is to pass it on.
+
+| Host | What it does with the element |
+|---|---|
+| React root (`createRoot(...).render`) or `Hydration` | Passes it as it is |
+| Feliz | `Rendered.toReact` into a Feliz tree; `Rendered.ofReact` for a Feliz element handed back (`Fuaran.UI.Renderer.Feliz`) |
+| Fable.React without Feliz (an MVU view, say) | `unbox<Fable.React.ReactElement>`, identity at runtime |
+| A `Custom` renderer that renders a Fuaran subtree | Returns `Render.render`'s result as it is |
+
 ## Source-packed hosting: there is no sink-parameter trap
 
 Consumer-side lore held that passing an `IFuaranTelemetrySink` through
@@ -243,8 +270,8 @@ not a reason to pick a sink-less entry.
 
 ## Where a client-render claim is proved (Phase 2550)
 
-The client renderer's elements are Feliz's, and Feliz builds its properties with an erased `unbox`: free under
-Fable, a real cast on .NET. So on .NET every path that emits an element throws at its first property, and a .NET
+The client renderer's elements are React elements built by its own binding, which builds properties with an erased
+`unbox`: free under Fable, a real cast on .NET. So on .NET every path that emits an element throws at its first property, and a .NET
 suite can only pin the value-level pieces around an element (a memo's decision, a plan, a class name), never the
 element. A claim about ELEMENTS or about a MOUNTED DOM is therefore proved in
 [`tests/fable-render/`](../tests/fable-render/README.md): an Expecto-shaped suite compiled by Fable and run under

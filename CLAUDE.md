@@ -11,7 +11,8 @@ Cross-repo development conventions (port allocation, launcher patterns, formatti
 | Package | Role |
 |---|---|
 | `Fuaran.UI` | Typed tree, smart constructors, Defaults |
-| `Fuaran.UI.Renderer` | Fable + React + Feliz renderer + reference CSS |
+| `Fuaran.UI.Renderer` | Fable + React renderer + reference CSS; returns the opaque `RenderedElement`, with no Feliz in its closure |
+| `Fuaran.UI.Renderer.Feliz` | Feliz interop for the renderer — `RenderedElement` to and from Feliz's `ReactElement`, and Custom renderers written in Feliz |
 | `Fuaran.UI.Ops` | Tree-op apply engine |
 | `Fuaran.UI.AiTools` | Runtime introspection (`fuaran.getNodeState` etc.) |
 | `Fuaran.UI.Validator` | Build-time F# AST walker |

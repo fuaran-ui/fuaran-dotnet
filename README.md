@@ -64,7 +64,8 @@ the parity gate; neither bumps without all hosts + the corpus moving together.
 | Package | Role |
 |---|---|
 | `Fuaran.UI` | Typed tree + smart constructors + Defaults |
-| `Fuaran.UI.Renderer` | Fable + React + Feliz renderer + reference CSS |
+| `Fuaran.UI.Renderer` | Fable + React renderer + reference CSS; returns the opaque `RenderedElement`, with no Feliz in its closure |
+| `Fuaran.UI.Renderer.Feliz` | Feliz interop for the renderer — `RenderedElement` to and from Feliz's `ReactElement`, and Custom renderers written in Feliz |
 | `Fuaran.UI.Ops` | Tree-op apply engine |
 | `Fuaran.UI.AiTools` | Runtime introspection |
 | `Fuaran.UI.Core.Function` | Hole value-space and effect-class projection onto the `Fuaran.Core` function model, shared by `AiTools` and `Validator` |
