@@ -333,7 +333,7 @@ let private scannedClassesInTier (tier: string) : Set<string> =
 //  exceptions". This is that half.
 //
 //  WHAT IT CANNOT MIRROR, said plainly rather than implied by its absence. The F#
-//  client renderer is Feliz/React and cannot render to an HTML string on .NET, so
+//  client renderer is React and cannot render to an HTML string on .NET, so
 //  there is no per-fixture render to compare and the EQUALITY half of Lock A is
 //  not available here. A source-level equality was measured before this shape was
 //  chosen and rejected on the evidence: 60 tokens appear in the client sources

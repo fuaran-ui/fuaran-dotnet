@@ -25,12 +25,12 @@ module Fuaran.UI.Tests.RenderEntrySeam
 //      where an orchestration tier authored the mount itself.
 //
 //  Both are pinned through a .NET-observable path, which needs saying because
-//  Feliz's .NET-side `ReactElement` is opaque (the constraint
+//  the renderer's .NET-side `RenderedElement` is opaque (the constraint
 //  AccessibilityTests / ErrorBoundaryTests / StateStoreScopingTests document):
 //  we cannot read the emitted DOM. What we CAN observe is the seams the
 //  renderer calls INTO while rendering — `IFuaranRuntime.TryLoadGuest`, the
 //  telemetry sink, and the installed `GuestSeam` — all of which are reached
-//  eagerly, before the final element evaluation a .NET Feliz shim defers. Every
+//  eagerly, before the final element evaluation the .NET React shim defers. Every
 //  assertion below is against one of those.
 //
 //  The probes are deliberately two-sided: each "the gate fired" case is paired
@@ -165,7 +165,7 @@ let private warningRuntime
             loaded.Add scopeId
             load scopeId }
 
-/// Render, tolerating the .NET Feliz shim's deferred element evaluation. Every
+/// Render, tolerating the .NET React shim's deferred element evaluation. Every
 /// seam this file asserts on is reached BEFORE that evaluation, so swallowing
 /// it loses no signal (same tolerance StateStoreScopingTests documents).
 let private renderTolerantly (f: unit -> 'a) : unit =
@@ -185,7 +185,7 @@ let private renderTolerantly (f: unit -> 'a) : unit =
 //  the scoped value was visible (or the switch would have taken its benign
 //  default) and the sink was wired (or the failure would have been swallowed).
 //
-//  Assert on WHICH node ids arrive, never on how MANY. Under .NET the Feliz
+//  Assert on WHICH node ids arrive, never on how MANY. Under .NET the React
 //  shim also throws while constructing elements, so the guard emits for
 //  ordinary nodes too and a count is not a discriminator. (That same shim
 //  throw is why this is observable at all — it is noise here and signal

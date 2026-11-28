@@ -15,7 +15,7 @@
          The upstream typed-tree library (Fuaran.UI) keeps nullness on. -->
     <Nullable>disable</Nullable>
     <!-- Fable consumers see the renderer as a regular F# library; .NET consumers
-         see the Feliz types as their normal nuget-published shape.  Setting
+         see the opaque `RenderedElement` and the Fable.Core types as published.  Setting
          FABLE_COMPILER unconditionally would break the .NET-side build of the
          tests project, so we don't.  Renderer code that
          genuinely needs to differ on the two pipelines uses `#if FABLE_COMPILER`. -->

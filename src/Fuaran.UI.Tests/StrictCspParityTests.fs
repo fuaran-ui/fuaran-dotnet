@@ -22,7 +22,7 @@ open Fuaran.UI.Renderer
 //  is derived instead from `Csp.Declarations`, ONE set of builders both tiers
 //  call — and this module is the lock that keeps that true.
 //
-//  It is a SOURCE scan, because the alternative is not available: the F# Feliz
+//  It is a SOURCE scan, because the alternative is not available: the F#
 //  client renderer cannot render to a string on .NET (the `ScalarSsrParityTests`
 //  finding), so no test can compare the two tiers' output here. What CAN be
 //  compared is which builder each tier calls at each slot, and that is exactly

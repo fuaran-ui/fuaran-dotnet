@@ -4,7 +4,7 @@ module Fuaran.UI.Tests.TokensModel
 //  The token control's judgements (Phase 1121).
 //
 //  `RatingModelTests`' reason, and a wider surface. The .NET test runner mounts
-//  no DOM and Feliz's .NET `ReactElement` is opaque, so a keyboard model written
+//  no DOM and the renderer's .NET `RenderedElement` is opaque, so a keyboard model written
 //  inline in the React component could only be asserted ABOUT. This control has
 //  more model than any other in the vocabulary — every claim below is a claim
 //  about a decision the reader can SEE go wrong and nobody can see in prose:

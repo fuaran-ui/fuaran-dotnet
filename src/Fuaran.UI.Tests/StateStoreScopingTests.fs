@@ -290,8 +290,8 @@ let mountScopeTests =
               let host = mountNode "m266" "guest-266"
 
               // The Mount arm reaches the loader seam synchronously during render;
-              // the final Feliz-element *evaluation* is a Fable/browser concern
-              // (the .NET Feliz shim casts lazily), so we tolerate a render-eval
+              // the final element *evaluation* is a Fable/browser concern
+              // (the .NET React shim casts lazily), so we tolerate a render-eval
               // throw and assert the wiring — TryLoadGuest was consulted with the
               // mount's scope id — which happens before any such evaluation.
               let _ =

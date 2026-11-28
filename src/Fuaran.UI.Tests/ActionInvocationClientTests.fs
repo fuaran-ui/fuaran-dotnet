@@ -181,7 +181,7 @@ let tests =
 
           test "the interaction-id key is spelled the same in both tiers" {
               // The renderer cannot reference the server-driven driver and the
-              // driver cannot reference the Feliz renderer, so the well-known
+              // driver cannot reference the client renderer, so the well-known
               // key is duplicated by necessity. This is what stops the
               // duplication drifting: two tiers reading different keys out of
               // one host's context would each report `None` and look correct.

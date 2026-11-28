@@ -22,7 +22,7 @@ module Fuaran.UI.Tests.NodeMap
 //  `onChange`) so it is NOT an F# equality type — every assertion pattern-
 //  matches to the leaf and compares that, never `=` on an Action.
 //
-//  No renderer is involved (a full .NET/Feliz render throws in
+//  No renderer is involved (a full .NET client render throws in
 //  `renderNodeFallback`); mapMsg is a pure tree→tree function.
 // ============================================================================
 

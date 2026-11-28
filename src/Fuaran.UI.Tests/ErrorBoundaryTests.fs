@@ -21,7 +21,7 @@ module Fuaran.UI.Tests.ErrorBoundary
 //      smart-ctor's output (the boundary is structural — no role
 //      override).
 //
-//  Feliz' .NET-side ReactElement is opaque (the same constraint
+//  The renderer's .NET-side `RenderedElement` is opaque (the same constraint
 //  AccessibilityTests / CustomRendererTests document); the per-node
 //  guard's actual DOM emission is asserted by the catalog axis under
 //  Fable, NOT here. These tests pin the failure-channel shape + the

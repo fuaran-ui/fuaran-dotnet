@@ -924,8 +924,8 @@ let private registerTargets (args: string array) =
             dotnet [ "pack"; project; "-c"; configuration; "-o"; feed ] repoRoot)
 
     // SSR client/server class+ARIA parity gate (Phase 142). Runs the server
-    // renderer's parity corpus — the executable lock keeping the Feliz client
-    // renderer and the Feliz.ViewEngine server renderer on the same class+ARIA
+    // renderer's parity corpus — the executable lock keeping the React client
+    // renderer and the string-emitting server renderer on the same class+ARIA
     // contract. CI runs this target alongside Test.
     Target.create "SsrParity" (fun _ ->
         dotnet [ "run"; "--project"; serverRenderTestProject; "-c"; configuration ] repoRoot)
