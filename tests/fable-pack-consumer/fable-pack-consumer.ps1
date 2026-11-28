@@ -20,6 +20,11 @@
   sources or declares itself .NET-only. That check reads project files; this leg proves the packed
   artefact for the case that was broken.
 
+  THE SCAFFOLD PANEL. `fuaran scaffold --target fsharp` prints an F# panel for a new user's Fable +
+  Feliz app. The consumer compiles that panel too, against the packed packages its install line
+  names (`Fuaran.UI.Renderer.Feliz` among them), so a renderer change that breaks the starter fails
+  here, naming the panel's file, before a release ships it.
+
   Phase 2139 adds the second producer: `Fuaran.UI.OpStream.Dag.Merge` was published as an assembly
   only, so a browser consumer could run the merge engine solely through a source reference into this
   repository. It now ships its sources, and the consumer calls into the merge engine through the
@@ -71,6 +76,17 @@ $producerRoots = @(
     # Phase 2139: the merge engine, offered to Fable consumers.
     (Join-Path $repoRoot 'src' 'Fuaran.UI.OpStream.Dag.Merge' 'Fuaran.UI.OpStream.Dag.Merge.fsproj')
 )
+# The second consumer: the F# panel `fuaran scaffold --target fsharp` emits, in a project of its own
+# (nullness off, as in a project a new user creates), against the packed packages the panel's
+# install line names. A renderer change that breaks the starter a new user gets fails this leg
+# rather than that user's first build. The panel is read from the CLI's source, where it is one
+# triple-quoted literal with no escapes, so the text compiled is the text the CLI prints.
+$panelProject = Join-Path $PSScriptRoot 'scaffold-panel' 'ScaffoldPanel.fsproj'
+$panelProducerRoots = @(
+    (Join-Path $repoRoot 'src' 'Fuaran.UI.Ops' 'Fuaran.UI.Ops.fsproj')
+    (Join-Path $repoRoot 'src' 'Fuaran.UI.Renderer.Feliz' 'Fuaran.UI.Renderer.Feliz.fsproj')
+)
+$scaffoldSource = Join-Path $repoRoot 'src' 'Fuaran.UI.Cli' 'Scaffold.fs'
 
 function Fail([string] $message) {
     Write-Host "==== fable-pack-consumer: FAILED — $message" -ForegroundColor Red
@@ -127,25 +143,43 @@ function Get-ProjectReferences([string] $fsproj) {
         ForEach-Object { [IO.Path]::GetFullPath((Join-Path $dir ($_.Groups[1].Value -replace '\\', '/'))) })
 }
 
-$closure = [System.Collections.Generic.List[string]]::new()
-$pending = [System.Collections.Generic.Queue[string]]::new()
-foreach ($root in $producerRoots) { $pending.Enqueue([IO.Path]::GetFullPath($root)) }
-while ($pending.Count -gt 0) {
-    $next = $pending.Dequeue()
-    if ($closure -contains $next) { continue }
-    if (-not (Test-Path -LiteralPath $next -PathType Leaf)) { Fail "a project in the closure is missing: $next" }
-    $closure.Add($next)
-    foreach ($ref in (Get-ProjectReferences $next)) { $pending.Enqueue($ref) }
+# The roots and their transitive ProjectReferences, referenced projects first.
+function Get-Closure([string[]] $roots) {
+    $found = [System.Collections.Generic.List[string]]::new()
+    $pending = [System.Collections.Generic.Queue[string]]::new()
+    foreach ($root in $roots) { $pending.Enqueue([IO.Path]::GetFullPath($root)) }
+    while ($pending.Count -gt 0) {
+        $next = $pending.Dequeue()
+        if ($found -contains $next) { continue }
+        if (-not (Test-Path -LiteralPath $next -PathType Leaf)) { Fail "a project in the closure is missing: $next" }
+        $found.Add($next)
+        foreach ($ref in (Get-ProjectReferences $next)) { $pending.Enqueue($ref) }
+    }
+    # Referenced projects first, so a reader of the log sees the foundations packed before their users.
+    $found.Reverse()
+    # A reading that found only the roots has stopped seeing the project graph.
+    if ($found.Count -lt ($roots.Count + 2)) { Fail "only $($found.Count) project(s) read in the closure of $($roots.Count) producer(s) — the reading is broken" }
+    , $found.ToArray()
 }
-# Referenced projects first, so a reader of the log sees the foundations packed before their users.
-$closure.Reverse()
-$packedIds = @($closure | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
-# A reading that found only the root has stopped seeing the project graph.
-if ($packedIds.Count -lt ($producerRoots.Count + 2)) { Fail "only $($packedIds.Count) project(s) read in the closure of $($producerRoots.Count) producer(s) — the reading is broken" }
+
+function Get-PackageIds([string[]] $projects) { @($projects | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) }) }
+
+$consumerClosure = Get-Closure $producerRoots
+$panelClosure = Get-Closure $panelProducerRoots
+# Both consumers' closures, packed once.
+$closure = @($consumerClosure) + @($panelClosure | Where-Object { $_ -notin $consumerClosure })
+$packedIds = Get-PackageIds $closure
+$consumerIds = Get-PackageIds $consumerClosure
+$panelIds = Get-PackageIds $panelClosure
 
 $versionMatch = [regex]::Match((Get-Content -Raw (Join-Path $repoRoot 'Directory.Build.props')), '<Version>\s*([^<\s]+)\s*</Version>')
 if (-not $versionMatch.Success) { Fail 'no <Version> in Directory.Build.props' }
 $packVersion = "$($versionMatch.Groups[1].Value)-fablepack"
+
+$panelMatch = [regex]::Match((Get-Content -Raw -LiteralPath $scaffoldSource), '(?s)let fsharpFablePanel: string =\s*"""(.*?)"""')
+if (-not $panelMatch.Success -or $panelMatch.Groups[1].Value -notmatch '^module App\.FuaranPanel') {
+    Fail "no fsharpFablePanel literal starting 'module App.FuaranPanel' in $scaffoldSource"
+}
 
 # ── Scratch ─────────────────────────────────────────────────────────────────
 
@@ -159,8 +193,12 @@ $scratch = Join-Path ([IO.Path]::GetTempPath()) "fuaran-fable-pack-consumer-$tre
 $feed = Join-Path $scratch 'feed'
 $packages = Join-Path $scratch 'packages'
 $outDir = Join-Path $scratch 'out'
-foreach ($dir in @($feed, $outDir)) { Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue }
-New-Item -ItemType Directory -Force -Path $feed, $packages | Out-Null
+$panelOutDir = Join-Path $scratch 'panel-out'
+$panelDir = Join-Path $scratch 'panel'
+foreach ($dir in @($feed, $outDir, $panelOutDir, $panelDir)) { Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue }
+New-Item -ItemType Directory -Force -Path $feed, $packages, $panelDir | Out-Null
+$panelFile = Join-Path $panelDir 'FuaranPanel.fs'
+Set-Content -LiteralPath $panelFile -Value $panelMatch.Groups[1].Value -NoNewline -Encoding utf8NoBOM
 foreach ($id in $packedIds) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $packages $id.ToLowerInvariant()) -ErrorAction SilentlyContinue
 }
@@ -204,9 +242,50 @@ Write-Host "==== fable-pack-consumer: packing $($packedIds.Count) package(s) at 
 
 # Every property below is read by MSBuild from the environment, so `dotnet restore` and
 # `dotnet fable` see the same values. Restored at the end either way.
-$touchedEnv = @('FablePackConsumerVersion', 'NUGET_PACKAGES')
+$touchedEnv = @('FablePackConsumerVersion', 'FablePackConsumerPanel', 'NUGET_PACKAGES')
 $savedEnv = @{}
 foreach ($name in $touchedEnv) { $savedEnv[$name] = [Environment]::GetEnvironmentVariable($name) }
+
+# Restore one consumer against the packed packages, check the restore resolved each of `$ids` at the
+# packed version, Fable-compile it into `$outPath` and check each of `$ids` was transpiled.
+function Invoke-ConsumerCompile([string] $fsproj, [string[]] $ids, [string] $outPath, [string] $label) {
+    & dotnet restore $fsproj --configfile $config --nologo
+    if ($LASTEXITCODE -ne 0) { Fail "restore of $label against the packed packages" }
+
+    # The restore resolved every packed id from the packed version — not a released one that happened
+    # to be cached or served by another source. Every id, so a closure member resolved at some other
+    # version (which would compile against a different contract) fails by name.
+    $assets = Get-Content -Raw (Join-Path (Split-Path -Parent $fsproj) 'obj' 'project.assets.json') | ConvertFrom-Json -AsHashtable
+    foreach ($id in $ids) {
+        if (-not $assets['libraries'].ContainsKey("$id/$packVersion")) { Fail "the restore of $label did not resolve $id at $packVersion" }
+    }
+
+    # Run from the repository root so the local tool manifest supplies the pinned Fable. Assignment,
+    # never a pipe: a pipe reports the LAST command's status.
+    Push-Location $repoRoot
+    try {
+        $fableOutput = & dotnet fable $fsproj -o $outPath --noCache --noRestore 2>&1
+        $fableExit = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+    $fableLines = @($fableOutput | ForEach-Object { [string] $_ })
+    foreach ($line in $fableLines) { Write-Host "  $line" }
+    if ($fableExit -ne 0) {
+        $fs0074 = @($fableLines | Where-Object { $_ -match 'FS0074|\(code 74\)' }).Count
+        if ($fs0074 -gt 0) {
+            Fail ("the Fable compile of $label reported FS0074 $fs0074 time(s) — a packed package reaching it ships no " +
+                'fable/ sources, so Fable read it as an assembly whose types point at an assembly it replaced with sources')
+        }
+        Fail "the Fable compile of $label (exit $fableExit)"
+    }
+
+    # Every packed package was TRANSPILED. Fable writes `fable_modules/<id>.<version>/` per package it
+    # compiles from source; a package it read as an assembly leaves none.
+    $modulesDir = Join-Path $outPath 'fable_modules'
+    $emitted = @(if (Test-Path -LiteralPath $modulesDir) { Get-ChildItem -LiteralPath $modulesDir -Directory | ForEach-Object Name })
+    $notEmitted = @($ids | Where-Object { "$_.$packVersion" -notin $emitted })
+    if ($notEmitted.Count -gt 0) { Fail ("packed but not transpiled from source for ${label}: " + ($notEmitted -join ', ')) }
+}
 
 try {
     # ── Pack ──────────────────────────────────────────────────────────────────
@@ -226,48 +305,13 @@ try {
     # ── Restore against the packed packages ───────────────────────────────────
 
     [Environment]::SetEnvironmentVariable('FablePackConsumerVersion', $packVersion)
+    [Environment]::SetEnvironmentVariable('FablePackConsumerPanel', $panelFile)
     [Environment]::SetEnvironmentVariable('NUGET_PACKAGES', $packages)
 
-    & dotnet restore $project --configfile $config --nologo
-    if ($LASTEXITCODE -ne 0) { Fail 'restore of the consumer against the packed packages' }
+    Invoke-ConsumerCompile $project $consumerIds $outDir 'the packed consumer'
+    Invoke-ConsumerCompile $panelProject $panelIds $panelOutDir 'the scaffold panel'
 
-    # The restore resolved every packed id from the packed version — not a released one that happened
-    # to be cached or served by another source. Every id, so a closure member resolved at some other
-    # version (which would compile against a different contract) fails by name.
-    $assets = Get-Content -Raw (Join-Path $PSScriptRoot 'obj' 'project.assets.json') | ConvertFrom-Json -AsHashtable
-    foreach ($id in $packedIds) {
-        if (-not $assets['libraries'].ContainsKey("$id/$packVersion")) { Fail "the restore did not resolve $id at $packVersion" }
-    }
-
-    # ── The compile ───────────────────────────────────────────────────────────
-
-    # Run from the repository root so the local tool manifest supplies the pinned Fable. Assignment,
-    # never a pipe: a pipe reports the LAST command's status.
-    Push-Location $repoRoot
-    try {
-        $fableOutput = & dotnet fable $project -o $outDir --noCache --noRestore 2>&1
-        $fableExit = $LASTEXITCODE
-    }
-    finally { Pop-Location }
-    $fableLines = @($fableOutput | ForEach-Object { [string] $_ })
-    foreach ($line in $fableLines) { Write-Host "  $line" }
-    if ($fableExit -ne 0) {
-        $fs0074 = @($fableLines | Where-Object { $_ -match 'FS0074|\(code 74\)' }).Count
-        if ($fs0074 -gt 0) {
-            Fail ("the Fable compile reported FS0074 $fs0074 time(s) — a packed package reaching the consumer ships no " +
-                'fable/ sources, so Fable read it as an assembly whose types point at an assembly it replaced with sources')
-        }
-        Fail "the Fable compile of the packed consumer (exit $fableExit)"
-    }
-
-    # Every packed package was TRANSPILED. Fable writes `fable_modules/<id>.<version>/` per package it
-    # compiles from source; a package it read as an assembly leaves none.
-    $modulesDir = Join-Path $outDir 'fable_modules'
-    $emitted = @(if (Test-Path -LiteralPath $modulesDir) { Get-ChildItem -LiteralPath $modulesDir -Directory | ForEach-Object Name })
-    $notEmitted = @($packedIds | Where-Object { "$_.$packVersion" -notin $emitted })
-    if ($notEmitted.Count -gt 0) { Fail ('packed but not transpiled from source: ' + ($notEmitted -join ', ')) }
-
-    Write-Host "==== fable-pack-consumer: green — $($packedIds.Count) packed package(s) transpiled from their fable/ sources at $packVersion" -ForegroundColor Green
+    Write-Host "==== fable-pack-consumer: green — $($packedIds.Count) packed package(s) transpiled from their fable/ sources at $packVersion, and the scaffold panel compiled against them" -ForegroundColor Green
 }
 finally {
     foreach ($name in $touchedEnv) { [Environment]::SetEnvironmentVariable($name, $savedEnv[$name]) }
@@ -275,9 +319,12 @@ finally {
     # tree, its `obj/project.assets.json` reads to anything inventorying the repository's restores as
     # an input that no feed can serve again, so it goes with the feed, whatever the verdict.
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $PSScriptRoot 'obj') -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force -LiteralPath (Join-Path $PSScriptRoot 'scaffold-panel' 'obj') -ErrorAction SilentlyContinue
     if (-not $KeepOutput) {
         Remove-Item -Recurse -Force -LiteralPath $outDir -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force -LiteralPath $panelOutDir -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force -LiteralPath $feed -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force -LiteralPath $panelDir -ErrorAction SilentlyContinue
     }
 }
 exit 0

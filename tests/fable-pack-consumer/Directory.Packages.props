@@ -11,5 +11,10 @@
     <PackageVersion Include="Fuaran.UI.Telemetry.Abstractions" Version="$(FablePackConsumerVersion)" />
     <PackageVersion Include="Fuaran.UI.Telemetry.Default" Version="$(FablePackConsumerVersion)" />
     <PackageVersion Include="Fuaran.UI.OpStream.Dag.Merge" Version="$(FablePackConsumerVersion)" />
+    <!-- The scaffold panel's packages. -->
+    <PackageVersion Include="Fuaran.UI" Version="$(FablePackConsumerVersion)" />
+    <PackageVersion Include="Fuaran.UI.Ops" Version="$(FablePackConsumerVersion)" />
+    <PackageVersion Include="Fuaran.UI.Renderer" Version="$(FablePackConsumerVersion)" />
+    <PackageVersion Include="Fuaran.UI.Renderer.Feliz" Version="$(FablePackConsumerVersion)" />
   </ItemGroup>
 </Project>

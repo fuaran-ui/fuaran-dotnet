@@ -2153,10 +2153,10 @@ else {
 # ProjectReference closure, restores a consumer against those PACKAGES and Fable-compiles it; its
 # header says what green means. Run as a child process, like 2b, and recorded like any other subject.
 #
-# The address is the consumer's own PLUS the producer's: `Get-CompileAddress` over
-# `Fuaran.UI.Telemetry.Default` covers every source and project file in the closure the script packs,
-# so an edit to any packed package misses the record. Not run under a redirected -SrcRoot, for 2b's
-# reason.
+# The address is the consumer's own PLUS each producer root's: `Get-CompileAddress` over every root
+# the script packs covers every source and project file in the closure, so an edit to any packed
+# package misses the record; and the CLI's `Scaffold.fs`, whose panel the consumer compiles. Not run
+# under a redirected -SrcRoot, for 2b's reason.
 
 if ($SkipPackConsumer) {
     Write-Host ''
@@ -2170,7 +2170,15 @@ else {
     $packConsumerDir = Join-Path $repoRoot 'tests' 'fable-pack-consumer'
     $packConsumerScript = Join-Path $packConsumerDir 'fable-pack-consumer.ps1'
     $packConsumerProject = Join-Path $packConsumerDir 'FablePackConsumer.fsproj'
-    $packProducerProject = Join-Path $repoRoot 'src' 'Fuaran.UI.Telemetry.Default' 'Fuaran.UI.Telemetry.Default.fsproj'
+    # Every producer root the script packs, so an edit to any packed package misses the record.
+    $packProducerProjects = @(
+        (Join-Path $repoRoot 'src' 'Fuaran.UI.Telemetry.Default' 'Fuaran.UI.Telemetry.Default.fsproj')
+        (Join-Path $repoRoot 'src' 'Fuaran.UI.OpStream.Dag.Merge' 'Fuaran.UI.OpStream.Dag.Merge.fsproj')
+        (Join-Path $repoRoot 'src' 'Fuaran.UI.Ops' 'Fuaran.UI.Ops.fsproj')
+        (Join-Path $repoRoot 'src' 'Fuaran.UI.Renderer.Feliz' 'Fuaran.UI.Renderer.Feliz.fsproj')
+    )
+    # The scaffold panel the second consumer (`scaffold-panel/`) compiles is read from this file.
+    $packScaffoldSource = Join-Path $repoRoot 'src' 'Fuaran.UI.Cli' 'Scaffold.fs'
 
     Write-Stage "the packed-consumer leg — $(ConvertTo-RepoRelative $packConsumerScript)"
 
@@ -2178,10 +2186,12 @@ else {
         $failures.Add("the packed-consumer leg script is missing: $packConsumerScript")
     }
     else {
-        $packProducerAddress = Get-CompileAddress $packProducerProject 'packed producer'
+        $packProducerAddresses = @($packProducerProjects | ForEach-Object { Get-CompileAddress $_ 'packed producer' })
+        $packProducerAddress = if (@($packProducerAddresses | Where-Object { -not $_ }).Count -eq 0) { $packProducerAddresses -join ' ' } else { $null }
         $packConsumerSemantics = @(
             "pwsh fable-pack-consumer.ps1 $(Get-CachedFileSha256 $packConsumerScript)"
             "producer $packProducerAddress"
+            "scaffold $(Get-CachedFileSha256 $packScaffoldSource) $(Get-CachedFileSha256 (Join-Path $packConsumerDir 'scaffold-panel' 'ScaffoldPanel.fsproj'))"
             "version $(Get-CachedFileSha256 (Join-Path $repoRoot 'Directory.Build.props'))"
         ) -join ' + '
         # An unresolvable producer address must never match a record: `$null` means "compile".
