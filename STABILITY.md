@@ -7938,6 +7938,17 @@ builder); the five files that built a ViewEngine element tree now build `Markup`
 unchanged corpora: `SsrParityTests`, `HydrationTests`, `IslandsTests`, `ResumeTests` and `EmailProjectionTests` with its
 golden `email-corpus/`.
 
+### Unreleased tidy — one escaper per job on the server path (additive)
+
+- **`Hydration.escapeForScript` is public** (it was `internal`). `Fuaran.UI.Giraffe`'s `Document` now embeds JSON-LD
+  through it instead of a private copy of the same three replacements. Additive: a new public member, nothing removed.
+- **The document shell's `<html>` / `<body>` attribute values are escaped by `Markup.escape`**, replacing a private
+  four-character copy that let `'` through. The bytes change in one respect: a `'` in an `HtmlAttributes` /
+  `BodyAttributes` value is now emitted as `&apos;`, as every `Markup`-built element already emitted it. The values
+  are double-quoted, so the old output was not exploitable; the change makes the two paths agree. Pinned by
+  `src/Fuaran.UI.Giraffe.Tests/DocumentTests.fs` ("an attribute VALUE gets Markup's five-character escape").
+- The unconsumed `Markdig` `PackageVersion` left `Directory.Packages.props`. No project referenced it.
+
 ---
 
 ## 0.109.1 (RELEASED — tagged v0.109.1 at 7de58a21, 2026-11-27) — the slot opened after v0.109.0 was released, by the handler-strip fix and the embedded renderer's re-sync, whose change is a fix
